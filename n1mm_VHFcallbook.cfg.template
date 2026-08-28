@@ -6,13 +6,17 @@
 # UDP port N1MM Logger+ broadcasts on (External Broadcast -> 12060 default)
 udp_port=12060
 
-# Lookups go to QRZCQ.com first, then HamQTH.com (both free, no account).
-# Results are cached locally to avoid repeated network fetches.
-# cache_days: how many days a cached result is considered fresh.
+# Locator sources (QRZCQ.com, HamQTH.com, QRZ.com public page) are queried
+# in parallel and cached. cache_days: how many days an entry stays fresh.
 cache_days=30
 
-# JSON file where the local cache is stored (relative to this cfg folder).
+# JSON file where the cache is stored (relative to this cfg folder). The
+# cache is written at most once a minute (and on close), not per lookup.
 cache_file=n1mm_VHFcallbook_cache.json
+
+# cache_persist=no keeps the cache in memory only - zero disk writes,
+# still de-dupes within the session. Default: yes.
+# cache_persist=yes
 
 # Optional third source: the PAID QRZ.com XML Callbook Data service
 # (https://www.qrz.com/page/xml_data.html). Requires an active QRZ XML

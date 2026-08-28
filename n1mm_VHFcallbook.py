@@ -15,13 +15,13 @@ Lookups are cached locally in n1mm_VHFcallbook_cache.json.
 
 Made by S55OO with AI assistance.
 
-Version: 1.13
+Version: 1.14
 
 Usage:
     python n1mm_VHFcallbook.py [--port 12060] [--config n1mm_VHFcallbook.cfg]
 """
 
-__version__ = "1.13"
+__version__ = "1.14"
 
 import n1mm_callbook as cb
 

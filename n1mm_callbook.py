@@ -22,13 +22,13 @@ fetches for the same callsign and to stay polite to the server.
 
 Made by S55OO with AI assistance.
 
-Version: 2.9
+Version: 2.10
 
 Usage:
     python n1mm_callbook.py [--port 12060] [--config callbook.cfg]
 """
 
-__version__ = "2.9"
+__version__ = "2.10"
 
 import argparse
 import base64
@@ -46,7 +46,7 @@ import tkinter as tk
 import urllib.parse
 import xml.etree.ElementTree as ET
 
-USER_AGENT = "Mozilla/5.0 N1MM_callbook/2.9"
+USER_AGENT = "Mozilla/5.0 N1MM_callbook/2.10"
 HAMQTH_UA = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
     "(KHTML, like Gecko) Chrome/126.0 Safari/537.36"
@@ -276,22 +276,56 @@ def listener_loop(bind_ip, port, on_packet, stop):
 #   2  + 'cqzone' field, locators upper-cased
 CACHE_SCHEMA = 2
 
+# The only per-source fields the display ever reads. The cache stores just
+# these, so a contest's worth of entries stays small on disk and in RAM.
+_CACHE_FIELDS = ("name", "state", "cqzone", "grid", "country")
+
 
 class Cache:
-    """Very small persistent JSON cache for callbook lookups."""
+    """Small JSON cache for callbook lookups.
 
-    def __init__(self, path, days):
+    Writes are debounced: ``put()`` only marks the store dirty and the
+    file is rewritten at most once every ``FLUSH_INTERVAL`` seconds (plus
+    once on close), not on every new callsign - over a big contest that
+    turns thousands of full-file rewrites into a few dozen. Set
+    ``cache_persist=no`` in the .cfg to keep the cache purely in memory
+    (no disk writes at all); it still de-dupes within the session.
+
+    Expired / wrong-schema entries are pruned when the file is loaded, so
+    it does not grow without bound across contests.
+    """
+
+    FLUSH_INTERVAL = 60  # seconds between disk writes while running
+
+    def __init__(self, path, days, persist=True):
         self.path = path
         self.days = days
+        self.persist = bool(persist and path)
         self._data = {}
+        self._dirty = False
+        self._last_flush = time.time()
         self._load()
 
     def _load(self):
+        if not self.persist:
+            return
         try:
             with open(self.path, encoding="utf-8") as fh:
-                self._data = json.load(fh)
+                data = json.load(fh)
         except (OSError, ValueError):
-            self._data = {}
+            return
+        if not isinstance(data, dict):
+            return
+        cutoff = time.time() - self.days * 86400
+        self._data = {
+            call: e
+            for call, e in data.items()
+            if isinstance(e, dict)
+            and e.get("v") == CACHE_SCHEMA
+            and e.get("ts", 0) > cutoff
+            and isinstance(e.get("sources"), list)
+            and e["sources"]
+        }
 
     def get(self, call):
         entry = self._data.get(call)
@@ -309,15 +343,28 @@ class Cache:
         return sources
 
     def put(self, call, sources):
-        self._data[call] = {"ts": time.time(), "v": CACHE_SCHEMA, "sources": sources}
-        self._save()
+        trimmed = [
+            {k: (s.get(k) or "") for k in _CACHE_FIELDS} if isinstance(s, dict) else s
+            for s in sources
+        ]
+        self._data[call] = {"ts": time.time(), "v": CACHE_SCHEMA, "sources": trimmed}
+        self._dirty = True
 
-    def _save(self):
+    def flush(self, force=False):
+        """Write the store to disk if it is dirty and either ``force`` is
+        set or the flush interval has elapsed. Driven from the GUI poll
+        loop and called once on close; a no-op when persistence is off."""
+        if not self._dirty or not self.persist:
+            return
+        if not force and (time.time() - self._last_flush) < self.FLUSH_INTERVAL:
+            return
         try:
             tmp = self.path + ".tmp"
             with open(tmp, "w", encoding="utf-8") as fh:
                 json.dump(self._data, fh, ensure_ascii=False)
             os.replace(tmp, self.path)
+            self._dirty = False
+            self._last_flush = time.time()
         except OSError:
             pass
 
@@ -634,6 +681,9 @@ def run(app_class, config_name, cache_name, description):
 
     port = as_int("udp_port", args.port)
     cache_days = as_int("cache_days", DEFAULT_CACHE_DAYS)
+    cache_persist = settings.get("cache_persist", "yes").strip().lower() not in (
+        "no", "false", "0", "off",
+    )
     cache_file = os.path.join(app_dir(), cache_name)
     if "cache_file" in settings:
         cache_file = os.path.abspath(
@@ -657,6 +707,7 @@ def run(app_class, config_name, cache_name, description):
         settings.get("qrz_username", ""),
         settings.get("qrz_password", ""),
         win_file,
+        cache_persist,
     )
     root.mainloop()
 
@@ -680,10 +731,10 @@ class CallbookApp:
     LOOKUP_CHAIN = (qrzcq_lookup, hamqth_lookup)
 
     def __init__(self, root, cache_path, port, cache_days, qrz_username="",
-                 qrz_password="", win_file=None):
+                 qrz_password="", win_file=None, cache_persist=True):
         self.root = root
         self.port = port
-        self.cache = Cache(cache_path, cache_days)
+        self.cache = Cache(cache_path, cache_days, cache_persist)
         self.win_file = win_file
         self.current = None
         self._debounce = None
@@ -881,6 +932,7 @@ class CallbookApp:
                 self._render_slots(call, self._slots, self._pending_inds)
         except Exception:
             pass
+        self.cache.flush()  # debounced - actually writes at most once a minute
         if not self.stop.is_set():
             self.root.after(100, self._poll_inbox)
 
@@ -1008,6 +1060,7 @@ class CallbookApp:
 
     def on_close(self):
         self._save_window()
+        self.cache.flush(force=True)
         self.stop.set()
         self.root.destroy()
 

@@ -26,7 +26,7 @@ PyInstaller is only needed to build the EXEs. Public domain (Unlicense).
 | `packet_callsign()` | pull the worked call out of a `LookupInfo`/`ContactInfo`/`ContactReplace` XML packet (`RadioInfo` is ignored — it carries the local op's own call) |
 | `normalize_call()` / `normalize_grid()` | sanitise the call; upper-case locators so a case-only difference isn't seen as a disagreement |
 | `_HttpPool` / `http_get()` | one kept-alive HTTPS connection per host, gzip, per-host lock, stale-connection retry, busy-host fallback to a one-shot connection. **All source fetches go through `http_get`.** |
-| `Cache` | tiny JSON cache keyed by call. Carries `CACHE_SCHEMA`; `get()` drops entries whose `v` != current schema so an upgrade re-fetches once. Only complete, error-free result sets are cached. |
+| `Cache` | JSON cache keyed by call. `put()` only marks dirty; `flush()` (driven from `_poll_inbox`, forced in `on_close`) writes at most once per `FLUSH_INTERVAL`. Stores only `_CACHE_FIELDS`. Prunes expired / wrong-`CACHE_SCHEMA` entries on load. `persist=False` (`cache_persist=no`) = in-memory only. |
 | `qrzcq_lookup` / `hamqth_lookup` / `qrz_lookup` / `qrzdb_lookup` | the sources. Each returns a dict with the same keys (`name qth grid class state cqzone country`) or `None` on any failure. `qrz_lookup` needs paid QRZ XML creds; `qrzdb_lookup` (VHF-only) computes the grid from `cs_lat`/`cs_lon` on the public QRZ page. |
 | `qrz_session_load()` / `_qrz_session_save()` | persist the QRZ XML session key to `qrz_session.json` so a restart skips the ~0.6 s re-login |
 | `load_config()` / `run()` | shared entry point — parse args + the `key=value` .cfg, build the app, run the Tk loop. Both `main()` functions are one call to `run()`. |

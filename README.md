@@ -1,6 +1,6 @@
 # N1MM Callbook – N1MM Logger+ Contest Callbook
 
-> **Version:** 2.9 (HF) / 1.13 (VHF) · Made by **S55OO** with AI assistance.
+> **Version:** 2.10 (HF) / 1.14 (VHF) · Made by **S55OO** with AI assistance.
 > · **Public domain** – see [LICENSE](LICENSE).
 
 A compact always-on-top window that listens to the N1MM Logger+ external
@@ -140,14 +140,17 @@ python n1mm_VHFcallbook.py [--port 12060] [--config n1mm_VHFcallbook.cfg]
   PC (identified by its local interface IPs). Broadcasts from other
   stations on the network are ignored, so only the local operator's
   callsign triggers a lookup.
-- Lookups are cached locally (`callbook_cache.json` for HF,
-  `n1mm_VHFcallbook_cache.json` for VHF) to avoid repeated
-  network fetches for the same callsign and to stay polite to the server.
-- Cache freshness is controlled by `cache_days` in `callbook.cfg`
-  (default 30 days). The cache also carries a schema version: after an
-  upgrade that changes the stored result shape, older entries are
-  re-fetched automatically the next time that call comes up. Deleting the
-  cache file forces a full refresh.
+- Lookups are cached (`callbook_cache.json` / `n1mm_VHFcallbook_cache.json`)
+  so a re-worked call resolves instantly and the servers aren't hit twice.
+  The file is written **at most once a minute** (and once on close), not on
+  every lookup, and it stores only the fields the window shows. Expired
+  entries are pruned when it loads, so it doesn't grow forever.
+- `cache_days` (default 30) sets how long an entry stays fresh.
+  `cache_persist=no` keeps the cache **in memory only** – zero disk writes,
+  still de-dupes within the session – for a big contest where you don't
+  need the cache afterwards. The cache also carries a schema version, so
+  after an upgrade that changes the stored shape older entries re-fetch
+  automatically. Deleting the file forces a full refresh.
 - If the lookup fails the main area shows `lookup failed`; if a callsign
   has no entry it shows `no data`.
 - **Fast lookups:** the connection to each source is kept alive and
@@ -173,6 +176,7 @@ apps run with defaults when no `.cfg` exists. Templates are in the repo:
 udp_port=12060
 cache_days=30
 cache_file=callbook_cache.json           (VHF: n1mm_VHFcallbook_cache.json)
+cache_persist=yes                        (no = in-memory only, never writes)
 
 # Optional - paid QRZ.com XML service (extra state / locator slot):
 # qrz_username=S55OO
@@ -248,6 +252,11 @@ dev\bench_latency.py – lookup-latency benchmark
 
 ## 7. Changelog
 
+- **2.10 (HF) / 1.14 (VHF)** – cache resource use: the file is now written
+  at most once a minute instead of on every lookup (a multi-thousand-QSO
+  contest went from thousands of full-file rewrites to a few dozen), stores
+  only the displayed fields, and prunes expired entries on load. New
+  `cache_persist=no` option keeps it in memory only.
 - **2.9 (HF) / 1.13 (VHF)** – latency: HTTPS connections to each source
   are pooled and kept alive, and responses are gzip-compressed – time to
   fill all three HF slots dropped from ~385 ms to ~155 ms (median) in

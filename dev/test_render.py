@@ -99,6 +99,36 @@ def main():
         except OSError:
             pass
 
+    # debounced writes: put() must not touch disk; flush(force) does
+    p = tempfile.mktemp(suffix="_cache.json")
+    try:
+        c = cb.Cache(p, 30, True)
+        c.put("W1AW", [{"name": "F", "state": "CT", "cqzone": "5",
+                        "grid": "FN31", "country": "United States",
+                        "qth": "drop me", "class": "E"}])
+        ok &= check("cache: put() does not write (debounced)",
+                    os.path.exists(p), False)
+        c.flush(force=True)
+        ok &= check("cache: flush(force) writes", os.path.exists(p), True)
+        stored = sorted(__import__("json").load(open(p))["W1AW"]["sources"][0])
+        ok &= check("cache: only display fields stored", stored,
+                    ["country", "cqzone", "grid", "name", "state"])
+    finally:
+        for f in (p, p + ".tmp"):
+            try:
+                os.remove(f)
+            except OSError:
+                pass
+
+    # persist=off: never writes, still de-dupes in memory
+    p = tempfile.mktemp(suffix="_cache.json")
+    c = cb.Cache(p, 30, False)
+    c.put("K1TTT", [{"state": "MA", "cqzone": "5"}])
+    c.flush(force=True)
+    ok &= check("cache: persist=off never writes", os.path.exists(p), False)
+    ok &= check("cache: persist=off still de-dupes",
+                c.get("K1TTT") is not None, True)
+
     # geometry round-trip
     m = cb.CallbookApp._GEOM_RE.match("344x117+321+123")
     ok &= check("geometry regex keeps position only",

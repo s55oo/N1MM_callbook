@@ -27,7 +27,7 @@ PyInstaller is only needed to build the EXEs. Public domain (Unlicense).
 | `normalize_call()` / `normalize_grid()` | sanitise the call; upper-case locators so a case-only difference isn't seen as a disagreement |
 | `_HttpPool` / `http_get()` | one kept-alive HTTPS connection per host, gzip, per-host lock, stale-connection retry, busy-host fallback to a one-shot connection. **All source fetches go through `http_get`.** |
 | `Cache` | JSON cache keyed by call. `put()` only marks dirty; `flush()` (driven from `_poll_inbox`, forced in `on_close`) writes at most once per `FLUSH_INTERVAL`. Stores only `_CACHE_FIELDS`. Prunes expired / wrong-`CACHE_SCHEMA` entries on load. `persist=False` (`cache_persist=no`) = in-memory only. |
-| `qrzcq_lookup` / `hamqth_lookup` / `qrz_lookup` / `qrzdb_lookup` | the sources. Each returns a dict with the same keys (`name qth grid class state cqzone country`) or `None` on any failure. `qrz_lookup` needs paid QRZ XML creds; `qrzdb_lookup` (VHF-only) computes the grid from `cs_lat`/`cs_lon` on the public QRZ page. |
+| `qrzcq_lookup` / `hamqth_lookup` / `qrz_lookup` / `qrzdb_lookup` | the sources. Each returns a dict with the same keys (`name qth grid class state cqzone country`) or `None` on any failure. `Cache` stores only `_CACHE_FIELDS` (the 5 the display reads). `qrz_lookup` needs paid QRZ XML creds; `qrzdb_lookup` (VHF-only) computes the grid from `cs_lat`/`cs_lon` on the public QRZ page. |
 | `qrz_session_load()` / `_qrz_session_save()` | persist the QRZ XML session key to `qrz_session.json` so a restart skips the ~0.6 s re-login |
 | `load_config()` / `run()` | shared entry point — parse args + the `key=value` .cfg, build the app, run the Tk loop. Both `main()` functions are one call to `run()`. |
 | `CallbookApp` | the window + all lookup orchestration. Subclassed by `VHFApp`. |
@@ -69,15 +69,16 @@ LOOKUP_CHAIN  # the free sources; qrz_lookup is prepended by __init__ when creds
 - **`CallbookApp.VERSION`, not module `__version__`.** `_build` reads
   `self.VERSION`. The VHF title bar used to show the HF version because it
   referenced the base module's global.
-- **Bump `CACHE_SCHEMA`** whenever the per-source result dict changes shape
-  (new field, different normalisation). Otherwise old cached entries are
-  served forever. (v1→v2 added `cqzone` + upper-cased locators.)
+- **Bump `CACHE_SCHEMA`** only when an old entry would now display *wrong*
+  (a field's meaning or normalisation changed) — not merely differently.
+  v1→v2 added `cqzone` + upper-cased locators, so it bumped. v2.10 trimmed
+  the stored fields but old wider entries still read fine, so it did not.
 - **`normalize_grid` is applied twice**: in each lookup (so the cache is
   clean) and in `_source_field` on read (so a stale cache entry still
   displays consistently).
 - Source pages are scraped with regex — markup drift fails silently
-  (fields go empty → `-`). `dev/bench_latency.py` and a `--selftest` idea
-  in the README notes are the mitigations.
+  (fields just go empty → `·`). `dev/bench_latency.py` doubles as a quick
+  "are the sources still parsing?" check before a contest.
 
 ## Files the app writes (all gitignored, all safe to delete)
 
@@ -97,18 +98,28 @@ copy /Y dist\n1mm_callbook.exe .
 copy /Y dist\n1mm_VHFcallbook.exe .
 ```
 
-## Release ritual (every functional change)
+## Release ritual
+
+A **user-facing change** (a feature or a bug fix) gets the full ritual and
+a release. A **docs / `dev/` / comment change** is committed and pushed
+only — no version bump, no release.
+
+Full ritual:
 
 1. Bump `__version__` in **both** files + the `USER_AGENT` in `n1mm_callbook.py`.
-2. README: version banner + a new `## 7. Changelog` entry.
-3. Rebuild both EXEs, copy to repo root.
+   HF and VHF carry independent numbers (HF ~2.x, VHF ~1.x).
+2. README: version banner near the top + a new entry at the top of
+   `## 7. Changelog`.
+3. Rebuild both EXEs, copy to repo root (`--noconfirm` also rewrites the
+   `.spec` files — leave those, they're unchanged content).
 4. `git grep` for your QRZ username / password → confirm no real
    credential reached a tracked file.
-5. Commit straight to `main` (no branch), terse message.
+5. Commit straight to `main` (no branch), terse semicolon-joined message.
 6. Push.
-7. To cut a release: `gh` authenticated via `GH_TOKEN` env only, then
-   `gh release create vX.Y --verify-tag --latest` with the two EXEs, the
-   two `*.cfg.template` files and `LICENSE` attached.
+7. Release: `gh` authenticated via `GH_TOKEN` env only (never
+   `gh auth login`), tag `main`, then
+   `gh release create vX.Y --verify-tag --latest` attaching the two EXEs,
+   the two `*.cfg.template` files and `LICENSE`.
 
 ## dev/
 

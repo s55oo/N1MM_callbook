@@ -18,13 +18,13 @@ fetches for the same callsign and to stay polite to the server.
 
 Made by S55OO with AI assistance.
 
-Version: 2.0
+Version: 2.1
 
 Usage:
     python n1mm_callbook.py [--port 12060] [--config callbook.cfg]
 """
 
-__version__ = "2.0"
+__version__ = "2.1"
 
 import argparse
 import base64
@@ -41,7 +41,7 @@ import urllib.request
 import urllib.parse
 import xml.etree.ElementTree as ET
 
-USER_AGENT = "Mozilla/5.0 N1MM_callbook/2.0"
+USER_AGENT = "Mozilla/5.0 N1MM_callbook/2.1"
 HAMQTH_UA = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
     "(KHTML, like Gecko) Chrome/126.0 Safari/537.36"
@@ -451,6 +451,9 @@ class CallbookApp:
     # its own value and ALL of them are shown (e.g. "MA MA MA"), so the
     # operator can see when sources disagree and pick the right one.
     FIELD = "state"
+    # Show the operator name too (printed once, shortest of the sources).
+    # The VHF variant only needs the locator, hence False there.
+    SHOW_NAME = True
     # Lookup sources run in order; every source's value is kept separately.
     # Variants can add more sources.
     LOOKUP_CHAIN = (qrzcq_lookup, hamqth_lookup)
@@ -611,18 +614,42 @@ class CallbookApp:
                 self._set_from_sources(call, sources, status=status)
         self.root.after(500, self._flush_pending)
 
-    def _source_value(self, info):
+    def _source_field(self, info, key):
         if not info:
             return ""
-        return (info.get(self.FIELD) or "").strip()
+        return (info.get(key) or "").strip()
 
-    def _sources_line(self, sources):
-        # e.g. HF (state): "MA MA MA"  /  VHF (grid): "JN76HD JN76HD JN76HD".
-        vals = [self._source_value(s) for s in sources]
-        return " ".join(v if v else "-" for v in vals)
+    def _source_value(self, info):
+        return self._source_field(info, self.FIELD)
+
+    def _best_name(self, sources):
+        # The operator name, printed only once; out of the candidates from
+        # the three sources the shortest one wins. Placeholder entries
+        # (QRZCQ fills unallocated calls with "Unknown OM") count as empty.
+        names = []
+        for s in sources:
+            n = self._source_field(s, "name")
+            a = n.lower()
+            if a and not a.startswith(("unknown", "not found", "n/a", "na")):
+                names.append(n)
+        return min(names, key=len) if names else ""
+
+    def _display_text(self, sources):
+        # e.g. HF (state): "Dave - MA MA MA"  /  VHF (grid): "JN76HD JN76HD JN76HD".
+        vals = [v if v else "-" for v in (self._source_value(s) for s in sources)]
+        line = " ".join(vals)
+        if self.SHOW_NAME:
+            name = self._best_name(sources)
+            if name and any(v != "-" for v in vals):
+                return "{} - {}".format(name, line)
+            if name:
+                return name
+        return line
 
     def _has_data(self, sources):
-        return any(self._source_value(s) for s in sources)
+        if any(self._source_value(s) for s in sources):
+            return True
+        return self.SHOW_NAME and bool(self._best_name(sources))
 
     def _font_for(self, length):
         for limit, size in FONT_SIZES:
@@ -636,7 +663,7 @@ class CallbookApp:
             self.canvas.itemconfigure(self.main_id, text="…")
         elif sources is not None and self._has_data(sources):
             self.canvas.configure(bg=COLOR_ACTIVE)
-            text = self._sources_line(sources)
+            text = self._display_text(sources)
             self.canvas.itemconfigure(self.main_id, text=text)
             self.canvas.itemconfigure(self.main_id, font=self._font_for(len(text)))
         elif status == "api error":

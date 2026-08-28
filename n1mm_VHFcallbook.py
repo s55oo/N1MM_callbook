@@ -38,6 +38,7 @@ class VHFApp(cb.CallbookApp):
     # Show all three locator values side by side (e.g. "JN76HD JN76HD JN76HD")
     # so a wrong one stands out; each source contributes its own value.
     FIELD = "grid"
+    SHOW_NAME = False
     # QRZCQ first, then HamQTH's Grid: row, then the locator computed from
     # the coordinates on the public QRZ.com page. The paid QRZ XML service
     # is appended automatically when credentials are configured.

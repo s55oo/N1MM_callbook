@@ -1,14 +1,15 @@
 # N1MM Callbook – N1MM Logger+ Contest Callbook
 
-> **Version:** 2.0 (HF) / 1.5 (VHF) · Made by **S55OO** with AI assistance.
+> **Version:** 2.1 (HF) / 1.5 (VHF) · Made by **S55OO** with AI assistance.
 
 A compact always-on-top window that listens to the N1MM Logger+ external
 UDP broadcast (XML, port **12060**) and automatically looks up the callsign
 you are working. Every source in the chain is queried and **all** of its
 values are shown side by side, so when the sources disagree the wrong one
 stands out and you can pick the right one. The window shows the worked
-station's **US state** in the main area (e.g. `MA MA MA`) and the
-**callsign** in the footer.
+station's **name – US state** in the main area (e.g. `Fred - MA MA MA`,
+name printed once as the shortest of the sources) and the **callsign** in
+the footer.
 
 The HF callbook pulls its state from **three sources**:
 **[QRZCQ.com](https://www.qrzcq.com)** and **[HamQTH.com](https://www.hamqth.com)**
@@ -102,10 +103,11 @@ python n1mm_VHFcallbook.py [--port 12060] [--config n1mm_VHFcallbook.cfg]
 - When a `LookupInfo` (type a call + press Space) or `ContactInfo` (QSO
   logged) packet arrives, the window shows the worked callsign in the
   footer and looks up the operator on the network.
-- The main area shows the worked station's **US state** three times, once
-  per source, e.g. `MA MA MA` (a dash `-` marks a source that had no
-  state; the font shrinks automatically for long text). The HF lookup
-  chain is **QRZCQ.com → HamQTH.com → QRZ.com XML (if configured)**. The
+- The main area shows the worked station's **shortest operator name**
+  (printed once) followed by the **US state** once per source, e.g.
+  `Fred - MA MA MA` (a dash `-` marks a source that had no state; the
+  font shrinks automatically for long text). The HF lookup chain is
+  **QRZCQ.com → HamQTH.com → QRZ.com XML (if configured)**. The
   **VHF variant** shows the **QRA/maidenhead locator** three times the
   same way, from **QRZCQ.com → HamQTH.com → QRZ.com(public page)** (plus
   QRZ XML when configured). When the three values differ (e.g.

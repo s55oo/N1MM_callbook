@@ -3,20 +3,24 @@
 A variant of the callbook app that shows the QRA/maidenhead locator
 (e.g. JN76JG) of the worked station instead of the operator name. Sends
 the same N1MM UDP packets through the exact same QRZCQ.com parsing, and
-falls back to the HamQTH.com public page when the locator is missing.
+falls back to the HamQTH.com public page - and optionally the paid
+QRZ.com XML service - when the locator is missing.
+
+QRZ needs a paid XML subscription (https://www.qrz.com/page/xml_data.html);
+set qrz_username/qrz_password in n1mm_VHFcallbook.cfg to enable it.
 
 Lookups are cached locally in n1mm_VHFcallbook_cache.json to stay polite
 to the servers.
 
 Made by S55OO with AI assistance.
 
-Version: 1.2
+Version: 1.3
 
 Usage:
     python n1mm_VHFcallbook.py [--port 12060] [--config n1mm_VHFcallbook.cfg]
 """
 
-__version__ = "1.2"
+__version__ = "1.3"
 
 import argparse
 import os
@@ -84,8 +88,13 @@ def main():
             os.path.join(os.path.dirname(args.config), settings["cache_file"])
         )
 
+    # Optional QRZ.com XML service (paid subscription). Empty credentials
+    # keep QRZ out of the lookup chain.
+    qrz_username = settings.get("qrz_username", "")
+    qrz_password = settings.get("qrz_password", "")
+
     root = tk.Tk()
-    VHFApp(root, cache_file, port, cache_days)
+    VHFApp(root, cache_file, port, cache_days, qrz_username, qrz_password)
     root.mainloop()
 
 

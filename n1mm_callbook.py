@@ -14,16 +14,17 @@ fetches for the same callsign and to stay polite to the server.
 
 Made by S55OO with AI assistance.
 
-Version: 1.7
+Version: 1.8
 
 Usage:
     python n1mm_callbook.py [--port 12060] [--config callbook.cfg]
 """
 
-__version__ = "1.7"
+__version__ = "1.8"
 
 import argparse
 import base64
+import functools
 import json
 import os
 import re
@@ -36,7 +37,7 @@ import urllib.request
 import urllib.parse
 import xml.etree.ElementTree as ET
 
-USER_AGENT = "Mozilla/5.0 N1MM_callbook/1.7"
+USER_AGENT = "Mozilla/5.0 N1MM_callbook/1.8"
 HAMQTH_UA = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
     "(KHTML, like Gecko) Chrome/126.0 Safari/537.36"
@@ -285,6 +286,90 @@ def hamqth_lookup(call, timeout=15):
     }
 
 
+_QRZ_SESSION = {}  # username -> {"key": str, "ts": float}
+
+
+def _qrz_login(username, password, timeout=15):
+    """Log in to the paid QRZ.com XML Callbook Data service.
+
+    Returns (session_key, error_message). On success a session key that
+    is valid for ~1 hour / 500 lookups; on failure the QRZ error text.
+    """
+    query = urllib.parse.urlencode({"username": username, "password": password})
+    url = "https://xml.qrz.com/xml/current/?" + query
+    req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            raw = resp.read().decode("utf-8", errors="replace")
+    except OSError:
+        return None, "network error"
+    try:
+        root = ET.fromstring(raw)
+    except ET.ParseError:
+        return None, "parse error"
+    err = root.findtext("Error") or ""
+    if err:
+        return None, err
+    return (root.findtext("Session/Key") or "").strip() or None, ""
+
+
+def qrz_lookup(call, username="", password="", timeout=15):
+    """Look up a callsign on the paid QRZ.com XML service.
+
+    Needs a QRZ XML subscription; credentials come from the config file.
+    Reuses the session key, re-logging in when it expired or the server
+    rejected it. Returns a dict like qrzcq_lookup (or None on failure),
+    so it can be used as another entry of the lookup chain.
+    """
+    if not username or not password:
+        return None
+    key = None
+    sess = _QRZ_SESSION.get(username)
+    if sess and (time.time() - sess.get("ts", 0)) < 2700:
+        key = sess.get("key")
+    if not key:
+        key, err = _qrz_login(username, password, timeout)
+        if err or not key:
+            return None
+        _QRZ_SESSION[username] = {"key": key, "ts": time.time()}
+
+    params = {"s": key, "callsign": call.upper()}
+    url = "https://xml.qrz.com/xml/current/?" + urllib.parse.urlencode(params)
+    req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            raw = resp.read().decode("utf-8", errors="replace")
+    except OSError:
+        return None
+    try:
+        root = ET.fromstring(raw)
+    except ET.ParseError:
+        return None
+    err = root.findtext("Error") or ""
+    if err:
+        if "session" in err.lower():
+            _QRZ_SESSION.pop(username, None)  # drop stale key, retry next time
+        return None
+    cs = root.find("Callsign")
+    if cs is None:
+        return None
+
+    def t(field):
+        el = cs.find(field)
+        return (el.text or "").strip() if el is not None else ""
+
+    addr1, addr2 = t("addr1"), t("addr2")
+    qth = " | ".join(x for x in (addr2, addr1) if x)
+    return {
+        "name": t("fname") or t("name"),
+        "qth": qth,
+        "grid": t("grid"),
+        "class": t("class"),
+        "state": t("state"),
+        "country": t("country"),
+    }
+
+
 def app_dir():
     if getattr(sys, "frozen", False):
         return os.path.dirname(sys.executable)
@@ -298,14 +383,21 @@ class CallbookApp:
     # an extra source.
     LOOKUP_CHAIN = (qrzcq_lookup,)
 
-    def __init__(self, root, cache_path, port, cache_days):
+    def __init__(self, root, cache_path, port, cache_days, qrz_username="", qrz_password=""):
         self.root = root
         self.port = port
         self.cache = Cache(cache_path, cache_days)
         self.current = None
         self._fetching = False
         self._debounce = None
-        self.lookup_chain = self.LOOKUP_CHAIN
+        chain = list(self.LOOKUP_CHAIN)
+        if qrz_username and qrz_password:
+            chain.append(
+                functools.partial(
+                    qrz_lookup, username=qrz_username, password=qrz_password
+                )
+            )
+        self.lookup_chain = tuple(chain)
         self.local = set(local_interfaces())
         self.local.add("127.0.0.1")
         self._build()
@@ -417,6 +509,8 @@ class CallbookApp:
         # Run every source in the chain and merge the fields. Returns
         # (info, status) where status is "api error" only if every source
         # failed to fetch (an empty page is "no data", not an error).
+        # For the locator, the longest (most precise) value wins so a
+        # truncated 2-char HamQTH grid can't shadow a full one from QRZ.
         info = {}
         any_error = False
         for fn in self.lookup_chain:
@@ -425,7 +519,12 @@ class CallbookApp:
                 any_error = True
                 continue
             for key, val in res.items():
-                if val and not info.get(key):
+                if not val:
+                    continue
+                cur = info.get(key)
+                if not cur:
+                    info[key] = val
+                elif key == "grid" and len(val) > len(cur):
                     info[key] = val
         if not info:
             return None, "api error" if any_error else ""

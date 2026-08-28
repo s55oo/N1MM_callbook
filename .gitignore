@@ -2,6 +2,7 @@ __pycache__/
 *.pyc
 callbook_cache.json
 n1mm_VHFcallbook_cache.json
+n1mm_VHFcallbook.cfg
 dist/
 build/
 *.spec.bak

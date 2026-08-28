@@ -1,6 +1,6 @@
 # N1MM Callbook – N1MM Logger+ Contest Callbook
 
-> **Version:** 1.7 (HF) / 1.2 (VHF) · Made by **S55OO** with AI assistance.
+> **Version:** 1.8 (HF) / 1.3 (VHF) · Made by **S55OO** with AI assistance.
 
 A compact always-on-top window that listens to the N1MM Logger+ external
 UDP broadcast (XML, port **12060**) and automatically looks up the callsign
@@ -14,7 +14,9 @@ included. It uses the same engine but shows the worked station's
 VHF/UHF contests where the grid square is the exchange. When the QRZCQ.com
 page has no locator, it automatically falls back to the public page on
 **[HamQTH.com](https://www.hamqth.com)** (e.g. `https://www.hamqth.com/<CALL>`)
-whose `Grid:` row carries the locator.
+whose `Grid:` row carries the locator. As an **optional third source**, the
+paid **[QRZ.com XML Callbook Data service](https://www.qrz.com/page/xml_data.html)**
+can be enabled by putting your QRZ login into `n1mm_VHFcallbook.cfg`.
 
 QRZCQ.com is a free public callbook that needs **no account and no API key** –
 each callsign has a page at `https://www.qrzcq.com/call/<CALL>` whose lookup
@@ -89,8 +91,9 @@ python n1mm_VHFcallbook.py [--port 12060] [--config n1mm_VHFcallbook.cfg]
   footer and looks up the operator on QRZCQ.com.
 - The main area shows the operator's **name – US state** (state blank for
   non-US calls; the font shrinks automatically for long names). The **VHF
-  variant** shows the **QRA/maidenhead locator** instead – looked up on
-  QRZCQ.com first, with **HamQTH.com** as a fallback source.
+  variant** shows the **QRA/maidenhead locator** instead. The VHF lookup
+  chain is **QRZCQ.com → HamQTH.com → QRZ.com (if configured)**; fields
+  are merged and the most precise (longest) locator wins.
 - **Local computer only:** the app only reacts to packets sent from *this*
   PC (identified by its local interface IPs). Broadcasts from other
   stations on the network are ignored, so only the local operator's
@@ -115,10 +118,17 @@ python n1mm_VHFcallbook.py [--port 12060] [--config n1mm_VHFcallbook.cfg]
 udp_port=12060
 cache_days=30
 cache_file=callbook_cache.json           (VHF: n1mm_VHFcallbook_cache.json)
+
+# VHF only - optional paid QRZ.com XML service:
+# qrz_username=S55OO
+# qrz_password=YOUR_QRZ_PASSWORD
 ```
 
 - Each `.cfg` and its matching `cache_file` are read/written from the same
   folder as the executable/script.
+- `n1mm_VHFcallbook.cfg` is **gitignored** (it may hold your QRZ password).
+  Copy the `n1mm_VHFcallbook.cfg.template` from the repo, or just create a
+  file with the settings you want to override.
 
 ---
 

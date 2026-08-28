@@ -1,0 +1,13 @@
+# Normalize line endings for text files so the working copy
+# uses CRLF on Windows without creating spurious diffs.
+* text=auto
+
+*.py    text eol=lf
+*.md    text eol=lf
+*.cfg   text eol=lf
+*.bat   text eol=crlf
+*.xml   text eol=lf
+*.spec  text eol=lf
+*.json  text eol=lf
+.gitignore text eol=lf
+*.exe   binary

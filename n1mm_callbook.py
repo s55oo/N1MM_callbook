@@ -54,12 +54,19 @@ FONT_SIZE_INFO = 10
 def packet_callsign(data):
     """Extract the worked station's callsign from an N1MM broadcast packet.
 
-    N1MM broadcasts a PossibleCall packet (field "Call") as you type a
-    callsign into the entry window, and a ContactInfo packet (field
-    "Callsign") when a contact is logged. We use those, and fall back to a
-    generic "CallSign"/"Callsign" field on any other packet.
+    N1MM's useful packets for a callbook (both use the lowercase "call"
+    field and have structurally identical XML):
 
-    Returns the callsign string, or None if the packet carries none.
+    * LookupInfo  - sent after entering a callsign in the entry window and
+      pressing the Space bar, before the QSO is logged. Requires the
+      "External Callsign Lookup" broadcast option to be enabled in N1MM.
+      This is the "I've committed the callsign" trigger.
+    * ContactInfo - sent when the contact is added to the log. Requires
+      the "Contacts" broadcast option to be enabled.
+
+    RadioInfo is deliberately ignored: its "OpCall"/"mycall" is the local
+    operator's own callsign, not the station being worked. Returns the
+    callsign string, or None if the packet carries no worked station.
     """
     raw = data.decode("utf-8", errors="replace")
     start = raw.find("<")
@@ -69,19 +76,17 @@ def packet_callsign(data):
         root = ET.fromstring(raw[start:])
     except ET.ParseError:
         return None
-    tag = root.tag
-    if tag not in ("PossibleCall", "ContactInfo", "RadioInfo"):
+    kind = root.tag.lower()
+    if kind not in ("lookupinfo", "contactinfo", "contactreplace"):
         return None
     callsign = ""
     for el in root.iter():
         name = el.tag
         if name == "Call":
-            if el.text and el.text.strip():
-                callsign = el.text.strip()
-            break
-        if name in ("CallSign", "Callsign") and el.text and el.text.strip():
+            return (el.text or "").strip().upper() or None
+        if name.lower() == "call" and el.text and el.text.strip():
             callsign = el.text.strip()
-            break
+            return callsign.upper() or None
     return callsign.upper() or None
 
 

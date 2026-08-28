@@ -17,6 +17,7 @@ class FakeCanvas:
     def __init__(self):
         self.text = None
         self.bg = None
+        self.fill = None
 
     def configure(self, **kw):
         if "bg" in kw:
@@ -25,6 +26,8 @@ class FakeCanvas:
     def itemconfigure(self, _id, **kw):
         if "text" in kw:
             self.text = kw["text"]
+        if "fill" in kw:
+            self.fill = kw["fill"]
 
     def coords(self, *a):
         pass
@@ -64,21 +67,37 @@ def main():
         app._render_slots("T", slots, set(pending))
         return app.canvas.text
 
+    def rf(app, slots, pending=frozenset()):
+        app._render_slots("T", slots, set(pending))
+        return app.canvas.fill
+
     ok &= check("HF US, all agree", r(hf, [US, US2, US]), "Fred - MA/5 MA/5 MA/5")
     ok &= check("HF US, one source has no zone", r(hf, [US, USnz, US]), "Fred - MA/5 MA MA/5")
     ok &= check("HF US, 2 slots pending", r(hf, [US, None, None], {1, 2}), "Fred - MA/5 … …")
     ok &= check("HF DX, foreign state dropped, zone kept", r(hf, [DL, DX, DX]), "Hans (Germany) - 14 14 14")
     ok &= check("HF DX, no zone anywhere", r(hf, [DXnz, DXnz, DXnz]), "Hans (Germany)")
+    ok &= check("HF empty slot shows '·'", r(hf, [US, EMPTY, US]), "Fred - MA/5 · MA/5")
     ok &= check("HF nothing", r(hf, [EMPTY, EMPTY, EMPTY]), "no data")
     ok &= check("HF all failed", r(hf, [None, None, None]), "lookup failed")
 
-    ok &= check("VHF locators, one missing", r(vh, [{"grid": "JN76HD"}, {"grid": "JN76HD"}, {"grid": ""}]),
-                "JN76HD JN76HD -")
+    ok &= check("VHF locators joined with ' - '",
+                r(vh, [{"grid": "JN76HD"}, {"grid": "JN76HD"}, {"grid": ""}]),
+                "JN76HD - JN76HD - ·")
     ok &= check("VHF stale lowercase grid upper-cased",
                 r(vh, [{"grid": "jn46la"}, {"grid": "JN46LA"}, {"grid": "JN46LA"}]),
-                "JN46LA JN46LA JN46LA")
+                "JN46LA - JN46LA - JN46LA")
     ok &= check("VHF DX with no grid stays 'no data'",
                 r(vh, [{"grid": "", "name": "Hans", "country": "Germany"}] * 3), "no data")
+
+    # agreement colour
+    ok &= check("VHF all agree -> green text",
+                rf(vh, [{"grid": "KN04AX"}] * 3), cb.TEXT_AGREE)
+    ok &= check("VHF disagree -> default text",
+                rf(vh, [{"grid": "KN04AX"}, {"grid": "KN04BX"}, {"grid": "KN04AX"}]), cb.TEXT_DEFAULT)
+    ok &= check("VHF one still pending -> not green yet",
+                rf(vh, [{"grid": "KN04AX"}, {"grid": "KN04AX"}, None], {2}), cb.TEXT_DEFAULT)
+    ok &= check("HF all agree -> green text", rf(hf, [US, US2, US]), cb.TEXT_AGREE)
+    ok &= check("HF one source lacks zone -> default text", rf(hf, [US, USnz, US]), cb.TEXT_DEFAULT)
 
     # cache schema: an entry without the current version is refetched
     p = tempfile.mktemp(suffix=".json")

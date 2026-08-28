@@ -22,13 +22,13 @@ fetches for the same callsign and to stay polite to the server.
 
 Made by S55OO with AI assistance.
 
-Version: 2.10
+Version: 2.11
 
 Usage:
     python n1mm_callbook.py [--port 12060] [--config callbook.cfg]
 """
 
-__version__ = "2.10"
+__version__ = "2.11"
 
 import argparse
 import base64
@@ -46,7 +46,7 @@ import tkinter as tk
 import urllib.parse
 import xml.etree.ElementTree as ET
 
-USER_AGENT = "Mozilla/5.0 N1MM_callbook/2.10"
+USER_AGENT = "Mozilla/5.0 N1MM_callbook/2.11"
 HAMQTH_UA = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
     "(KHTML, like Gecko) Chrome/126.0 Safari/537.36"
@@ -60,6 +60,10 @@ HELP_ICON_B64 = (
 )
 COLOR_IDLE = "#3a3a3a"
 COLOR_ACTIVE = "#1f6feb"
+TEXT_DEFAULT = "white"
+TEXT_AGREE = "#b9f5b0"  # very light green: every source returned the same value
+SLOT_EMPTY = "·"   # a source answered but had no value ("·")
+SLOT_PENDING = "…"  # a source is still being queried ("…")
 
 FONT_SIZE_NAME = 18
 FONT_SIZE_FOOTER = 10
@@ -723,6 +727,10 @@ class CallbookApp:
     # sources disagree and can pick the right value for the exchange. The
     # HF app shows US state + CQ zone; the VHF variant only the locator.
     SLOT_FIELDS = ("state", "cqzone")
+    # String placed between the per-source slots. HF keeps a plain space
+    # (the name already has a " - " after it); VHF uses " - " so three
+    # locators read as "JN76HD - JN76HD - JN76HD", not a run-on.
+    SLOT_SEP = " "
     # Show the operator name too (printed once, shortest of the sources).
     # The VHF variant only needs the locator, hence False there.
     SHOW_NAME = True
@@ -1002,30 +1010,35 @@ class CallbookApp:
 
     def _render_slots(self, call, slots, pending):
         # Renders the main area at any stage of the lookup. Each slot maps
-        # to one source in chain order; still-fetching slots show "…" so
-        # results appear as they arrive (e.g. "Fred - MA/5 … …" then the
-        # rest fill in). Example final lines:
-        #   HF, US:  "Dave - MA/5 MA/5 MA/5"    (state / CQ zone per source)
+        # to one source in chain order; a slot still being queried shows
+        # "…" and one that answered with nothing shows "·", so results
+        # appear as they arrive. When every source that answered agrees the
+        # text turns light green. Example final lines:
+        #   HF, US:  "Dave - MA/5 MA/5 MA/5"       (state / CQ zone per source)
         #   HF, DX:  "Hans (Germany) - 14 14 14"
-        #   VHF:     "JN76HD JN76HD JN76HD JN76HD"
+        #   VHF:     "JN76HD - JN76HD - JN76HD - JN76HD"
         finished = [slots[i] for i in range(len(slots)) if i not in pending]
         any_data = any(self._source_value(s) for s in finished if s)
         vals = []
         for i in range(len(slots)):
             if i in pending:
-                vals.append("…")
+                vals.append(SLOT_PENDING)
             else:
                 s = slots[i]
                 v = self._source_value(s) if s else ""
-                vals.append(v if v else "-")
+                vals.append(v if v else SLOT_EMPTY)
         all_done = not pending
         have_name = self.SHOW_NAME and bool(self._best_name(finished))
+        # Every source that answered with a real value - if they all match
+        # (and there are at least two), the operator can trust it: green.
+        real_vals = [v for v in vals if v not in (SLOT_EMPTY, SLOT_PENDING)]
+        agree = all_done and len(real_vals) >= 2 and len(set(real_vals)) == 1
+        fill = TEXT_DEFAULT
         if not finished:
-            text = "…"
+            text = SLOT_PENDING
             bg = COLOR_ACTIVE
         elif any_data or have_name:
-            line = " ".join(vals)
-            real = any(v not in ("-", "…") for v in vals)
+            line = self.SLOT_SEP.join(vals)
             if self.SHOW_NAME:
                 name = self._best_name(finished)
                 prefix = name
@@ -1035,21 +1048,23 @@ class CallbookApp:
                     country = self._best_country(finished)
                     if country:
                         prefix = "{} ({})".format(name, country) if name else country
-                if prefix and real:
+                if prefix and real_vals:
                     text = "{} - {}".format(prefix, line)
                 else:
                     text = prefix or line
             else:
                 text = line
             bg = COLOR_ACTIVE
+            if agree:
+                fill = TEXT_AGREE
         elif not all_done:
-            text = "…"
+            text = SLOT_PENDING
             bg = COLOR_ACTIVE
         else:
             text = "lookup failed" if all(s is None for s in slots) else "no data"
             bg = COLOR_IDLE
         self.canvas.configure(bg=bg)
-        self.canvas.itemconfigure(self.main_id, text=text)
+        self.canvas.itemconfigure(self.main_id, text=text, fill=fill)
         self.canvas.itemconfigure(self.main_id, font=self._font_for(len(text)))
 
     def _font_for(self, length):

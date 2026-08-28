@@ -1,6 +1,6 @@
 # N1MM Callbook – N1MM Logger+ Contest Callbook
 
-> **Version:** 2.10 (HF) / 1.14 (VHF) · Made by **S55OO** with AI assistance.
+> **Version:** 2.11 (HF) / 1.15 (VHF) · Made by **S55OO** with AI assistance.
 > · **Public domain** – see [LICENSE](LICENSE).
 
 A compact always-on-top window that listens to the N1MM Logger+ external
@@ -122,11 +122,12 @@ python n1mm_VHFcallbook.py [--port 12060] [--config n1mm_VHFcallbook.cfg]
   slot). The order is just the column layout, not a priority – every source
   is fetched at the same time. When the values differ (e.g.
   `MA/5 MA/4 MA/5`) you see it immediately and can decide which one is
-  right for the exchange.
+  right for the exchange. **When every source that answered agrees, the
+  text turns light green** – a quick "you can trust this" signal.
 - For a **US station** the main area shows the **shortest operator name**
   (printed once) followed by one **`state/zone`** token per source, e.g.
   `FRED - MA/5 MA/5 MA/5`. A slot shows just the state when that source has
-  no CQ zone (`MA`), just the zone for a DX-style entry, or `-` when it
+  no CQ zone (`MA`), just the zone for a DX-style entry, or `·` when it
   returned neither. The font shrinks automatically for long text.
 - For a **non-US (DX) station** there is no US state, so the HF window
   shows the **operator name and country** followed by each source's **CQ
@@ -135,7 +136,8 @@ python n1mm_VHFcallbook.py [--port 12060] [--config n1mm_VHFcallbook.cfg]
   returns in the state field (e.g. `HE` for a German call) is ignored; the
   CQ zone, which is meaningful worldwide, is kept.
 - The **VHF variant** shows the **QRA/maidenhead locator** the same
-  side-by-side way and has no name/DX handling – it only needs the grid.
+  side-by-side way, separated by ` - ` (`JN76HD - JN76HD - JN76HD`), and
+  has no name/DX handling – it only needs the grid.
 - **Local computer only:** the app only reacts to packets sent from *this*
   PC (identified by its local interface IPs). Broadcasts from other
   stations on the network are ignored, so only the local operator's
@@ -252,6 +254,10 @@ dev\bench_latency.py – lookup-latency benchmark
 
 ## 7. Changelog
 
+- **2.11 (HF) / 1.15 (VHF)** – the main text turns **light green when every
+  source that answered agrees**. VHF locators are now separated by ` - `
+  (`JN76HD - JN76HD - JN76HD`) instead of plain spaces, and a source that
+  returned nothing shows `·` (was `-`, which read like a separator).
 - **2.10 (HF) / 1.14 (VHF)** – cache resource use: the file is now written
   at most once a minute instead of on every lookup (a multi-thousand-QSO
   contest went from thousands of full-file rewrites to a few dozen), stores

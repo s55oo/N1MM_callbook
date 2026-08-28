@@ -44,7 +44,10 @@ once every slot is in.
 `_render_slots` builds the display string. `_source_value` joins the
 `SLOT_FIELDS` into one `a/b` token per slot; the `state` field is dropped
 when the source's country is non-US (`_US_NAMES`), but `cqzone` is kept.
-`_is_dx` decides the `name (country)` vs `name` prefix.
+`_is_dx` decides the `name (country)` vs `name` prefix. Slots are joined
+by `SLOT_SEP`; an empty slot is `SLOT_EMPTY` (`·`), a pending one
+`SLOT_PENDING` (`…`). When `all_done` and every real value matches (>=2 of
+them) the text fill is `TEXT_AGREE` (light green) instead of `TEXT_DEFAULT`.
 
 ### Class attributes a variant overrides
 
@@ -52,6 +55,7 @@ when the source's country is non-US (`_US_NAMES`), but `cqzone` is kept.
 VERSION       # title-bar version — set per subclass, NOT the module __version__
 APP_TITLE
 SLOT_FIELDS   # HF ("state","cqzone");  VHF ("grid",)
+SLOT_SEP      # HF " " (name already has " - " after it);  VHF " - "
 SHOW_NAME     # HF True; VHF False
 LOOKUP_CHAIN  # the free sources; qrz_lookup is prepended by __init__ when creds exist
 ```

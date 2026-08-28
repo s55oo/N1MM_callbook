@@ -2,25 +2,29 @@
 
 A compact always-on-top window that listens to the N1MM Logger+ external
 UDP broadcast (XML, port 12060) and automatically looks up the callsign
-currently in the radio/RX1 via QRZCQ.com. The operator name, QTH and
-grid square are shown under the callsign.
+currently in the radio/RX1. Each source is queried and ALL of its values
+are shown side by side (e.g. "MA MA MA" for the US state on HF, three
+locators on the VHF variant), so disagreements between sources stand out
+and the operator can pick the right one.
 
 QRZCQ.com is a public, free callbook that needs no account or API key -
 each callsign has a page at https://www.qrzcq.com/call/<CALL> whose
-lookup info is parsed from the HTML.
+lookup info is parsed from the HTML. HamQTH.com and (VHF) the QRZ.com
+public page back it up; the paid QRZ.com XML service can also be added
+when credentials are configured.
 
 Lookups are cached locally in a JSON file to avoid repeated network
 fetches for the same callsign and to stay polite to the server.
 
 Made by S55OO with AI assistance.
 
-Version: 1.9
+Version: 2.0
 
 Usage:
     python n1mm_callbook.py [--port 12060] [--config callbook.cfg]
 """
 
-__version__ = "1.9"
+__version__ = "2.0"
 
 import argparse
 import base64
@@ -37,7 +41,7 @@ import urllib.request
 import urllib.parse
 import xml.etree.ElementTree as ET
 
-USER_AGENT = "Mozilla/5.0 N1MM_callbook/1.9"
+USER_AGENT = "Mozilla/5.0 N1MM_callbook/2.0"
 HAMQTH_UA = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
     "(KHTML, like Gecko) Chrome/126.0 Safari/537.36"
@@ -174,16 +178,15 @@ class Cache:
             return None
         if (time.time() - entry.get("ts", 0)) > self.days * 86400:
             return None
-        info = entry.get("info")
-        # Old-format cache entries predate the 'state' field and only have the
-        # name; treat them as stale so the next lookup re-fetches and fills in
-        # the state rather than showing a bare name from history.
-        if not isinstance(info, dict) or "state" not in info:
+        sources = entry.get("sources")
+        # Old-format entries stored a single merged 'info' dict; treat them
+        # as stale so the next lookup re-fetches per-source results.
+        if not isinstance(sources, list) or not sources:
             return None
-        return info
+        return sources
 
-    def put(self, call, info):
-        self._data[call] = {"ts": time.time(), "info": info}
+    def put(self, call, sources):
+        self._data[call] = {"ts": time.time(), "sources": sources}
         self._save()
 
     def _save(self):
@@ -444,9 +447,12 @@ def app_dir():
 
 class CallbookApp:
     APP_TITLE = "N1MM Callbook"
-    # Lookup sources tried in order; results are merged (first non-empty
-    # value for each field wins, except the locator where the longest -
-    # most precise - value wins). Variants can add more sources.
+    # Field the main area highlights. Each source in the chain contributes
+    # its own value and ALL of them are shown (e.g. "MA MA MA"), so the
+    # operator can see when sources disagree and pick the right one.
+    FIELD = "state"
+    # Lookup sources run in order; every source's value is kept separately.
+    # Variants can add more sources.
     LOOKUP_CHAIN = (qrzcq_lookup, hamqth_lookup)
 
     def __init__(self, root, cache_path, port, cache_days, qrz_username="", qrz_password=""):
@@ -548,18 +554,18 @@ class CallbookApp:
         self._debounce = None
         if call != self.current:
             return
-        info = self.cache.get(call)
-        if info is not None:
-            self._set_info(call, info, cached=True)
+        sources = self.cache.get(call)
+        if sources is not None:
+            self._set_from_sources(call, sources)
         else:
-            self._set_info(call, None, searching=True)
+            self._set_from_sources(call, None, searching=True)
             self._fetch_async(call)
 
     def _show_call(self, call):
         self.call_label.configure(text=call)
-        info = self.cache.get(call)
-        if info is not None:
-            self._set_info(call, info, cached=True)
+        sources = self.cache.get(call)
+        if sources is not None:
+            self._set_from_sources(call, sources)
         else:
             # cleared visually while waiting for the debounce / lookup
             self.canvas.configure(bg=COLOR_ACTIVE)
@@ -571,54 +577,52 @@ class CallbookApp:
         self._fetching = True
         threading.Thread(target=self._do_fetch, args=(call,), daemon=True).start()
 
-    def _run_lookup(self, call):
-        # Run every source in the chain and merge the fields. Returns
-        # (info, status) where status is "api error" only if every source
-        # failed to fetch (an empty page is "no data", not an error).
-        # For the locator, the longest (most precise) value wins so a
-        # truncated 2-char HamQTH grid can't shadow a full one from QRZ.
-        info = {}
+    def _lookup(self, call):
+        # Run every source in the chain and keep each source's result
+        # separately (one dict per source, None on network error). Returns
+        # (sources, status); status is "api error" only if every source
+        # failed to fetch (an empty response is "no data", not an error).
+        sources = []
         any_error = False
         for fn in self.lookup_chain:
             res = fn(call)
             if res is None:
                 any_error = True
-                continue
-            for key, val in res.items():
-                if not val:
-                    continue
-                cur = info.get(key)
-                if not cur:
-                    info[key] = val
-                elif key == "grid" and len(val) > len(cur):
-                    info[key] = val
-        if not info:
-            return None, "api error" if any_error else ""
-        return info, ""
+                sources.append(None)
+            else:
+                sources.append(res)
+        if any(s for s in sources if s is not None):
+            return sources, ""
+        return None, "api error" if any_error else ""
 
     def _do_fetch(self, call):
-        info, status = self._run_lookup(call)
-        if info is not None:
-            self.cache.put(call, info)
+        sources, status = self._lookup(call)
+        if sources is not None:
+            self.cache.put(call, sources)
         self._fetching = False
-        self._pending = (call, info, status)
+        self._pending = (call, sources, status)
 
     def _flush_pending(self):
         pending = getattr(self, "_pending", None)
         if pending:
-            call, info, status = pending
+            call, sources, status = pending
             self._pending = None
             if call == self.current:
-                self._set_info(call, info, cached=False, status=status)
+                self._set_from_sources(call, sources, status=status)
         self.root.after(500, self._flush_pending)
 
-    def _line(self, info):
-        name = (info.get("name") or "").strip()
-        name = name.split()[0] if name else ""
-        state = (info.get("state") or "").strip()
-        if name and state:
-            return "{} - {}".format(name, state)
-        return name or state
+    def _source_value(self, info):
+        if not info:
+            return ""
+        return (info.get(self.FIELD) or "").strip()
+
+    def _sources_line(self, sources):
+        # e.g. HF (state): "MA MA MA"  /  VHF (grid): "JN76HD JN76HD JN76HD".
+        vals = [self._source_value(s) for s in sources]
+        return " ".join(v if v else "-" for v in vals)
+
+    def _has_data(self, sources):
+        return any(self._source_value(s) for s in sources)
 
     def _font_for(self, length):
         for limit, size in FONT_SIZES:
@@ -626,13 +630,13 @@ class CallbookApp:
                 return ("Segoe UI", size, "bold")
         return ("Segoe UI", 11, "bold")
 
-    def _set_info(self, call, info, cached=False, status="", searching=False):
+    def _set_from_sources(self, call, sources, status="", searching=False):
         if searching:
             self.canvas.configure(bg=COLOR_ACTIVE)
             self.canvas.itemconfigure(self.main_id, text="…")
-        elif info is not None and (info.get("name") or info.get("state")):
+        elif sources is not None and self._has_data(sources):
             self.canvas.configure(bg=COLOR_ACTIVE)
-            text = self._line(info)
+            text = self._sources_line(sources)
             self.canvas.itemconfigure(self.main_id, text=text)
             self.canvas.itemconfigure(self.main_id, font=self._font_for(len(text)))
         elif status == "api error":

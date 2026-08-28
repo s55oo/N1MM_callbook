@@ -14,13 +14,13 @@ to the servers.
 
 Made by S55OO with AI assistance.
 
-Version: 1.4
+Version: 1.5
 
 Usage:
     python n1mm_VHFcallbook.py [--port 12060] [--config n1mm_VHFcallbook.cfg]
 """
 
-__version__ = "1.4"
+__version__ = "1.5"
 
 import argparse
 import os
@@ -35,14 +35,13 @@ CACHE_NAME = "n1mm_VHFcallbook_cache.json"
 
 class VHFApp(cb.CallbookApp):
     APP_TITLE = "N1MM VHF Callbook"
+    # Show all three locator values side by side (e.g. "JN76HD JN76HD JN76HD")
+    # so a wrong one stands out; each source contributes its own value.
+    FIELD = "grid"
     # QRZCQ first, then HamQTH's Grid: row, then the locator computed from
     # the coordinates on the public QRZ.com page. The paid QRZ XML service
     # is appended automatically when credentials are configured.
     LOOKUP_CHAIN = (cb.qrzcq_lookup, cb.hamqth_lookup, cb.qrzdb_lookup)
-
-    def _line(self, info):
-        # Show only the maidenhead locator (e.g. JN76JG) in the main area.
-        return (info.get("grid") or "").strip()
 
 
 def main():

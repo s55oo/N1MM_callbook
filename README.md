@@ -1,6 +1,6 @@
 # N1MM Callbook – N1MM Logger+ Contest Callbook
 
-> **Version:** 2.11 (HF) / 1.15 (VHF) · Made by **S55OO** with AI assistance.
+> **Version:** 2.12 (HF) / 1.16 (VHF) · Made by **S55OO** with AI assistance.
 > · **Public domain** – see [LICENSE](LICENSE).
 
 A compact always-on-top window that listens to the N1MM Logger+ external
@@ -16,13 +16,18 @@ shortest of the sources). For a **non-US (DX) station**, where there is no
 US state, the HF window shows the **operator name and country** followed
 by each source's **CQ zone**, e.g. `Hans (Germany) - 14 14 14`.
 
-The HF callbook pulls its **state, CQ zone** and name from up to **three
-sources**: **[QRZ.com XML](https://www.qrz.com/page/xml_data.html),
-[QRZCQ.com](https://www.qrzcq.com) and
-[HamQTH.com](https://www.hamqth.com)**. They are queried at the same time;
-the slots are shown left-to-right in that order (QRZ XML left-most when
-your QRZ login is configured). Without QRZ credentials it runs the two
-free sources.
+The HF window's **left-most slot is offline**: `cty.dat`
+([AD1C / country-files.com](https://www.country-files.com/cty/cty.dat))
+gives the **DXCC country and CQ zone instantly**, before any network
+source responds. A copy is bundled and a fresh one auto-downloads into the
+data folder. The remaining slots are the network sources, queried at the
+same time: **[QRZ.com XML](https://www.qrz.com/page/xml_data.html)** (when
+your QRZ login is configured), **[QRZCQ.com](https://www.qrzcq.com)** and
+**[HamQTH.com](https://www.hamqth.com)**. cty.dat only *knows* the CQ zone
+for granted for single-zone countries and the ~5,000 listed contesters;
+for everyone else the app derives it from the call area (VE7 → 3,
+VE3/4/5/6 → 4, W6/7 → 3, …) and shows all sources side by side so you can
+still see a disagreement.
 
 A **VHF variant** (`n1mm_VHFcallbook.py` / `n1mm_VHFcallbook.exe`) is also
 included. It uses the same engine but shows the worked station's
@@ -116,14 +121,18 @@ python n1mm_VHFcallbook.py [--port 12060] [--config n1mm_VHFcallbook.cfg]
   answers** – `…` marks a slot still running. A slow source never holds up
   a fast one: you might see `FRED - MA/5 … …` first, then the rest fill in
   to `FRED - MA/5 MA/5 MA/5`.
-- The slots are laid out left-to-right in a fixed order –
-  **QRZ.com XML, QRZCQ.com, HamQTH.com** (QRZ XML only when credentials are
-  configured; the **VHF variant** adds **QRZ.com public page** as a fourth
-  slot). The order is just the column layout, not a priority – every source
-  is fetched at the same time. When the values differ (e.g.
-  `MA/5 MA/4 MA/5`) you see it immediately and can decide which one is
-  right for the exchange. **When every source that answered agrees, the
-  text turns light green** – a quick "you can trust this" signal.
+- The slots are laid out left-to-right in a fixed order – HF:
+  **cty.dat, QRZ.com XML, QRZCQ.com, HamQTH.com** (cty.dat and QRZ XML
+  only when available/configured); VHF: **QRZ XML, QRZCQ, HamQTH, QRZ.com
+  public page** (no cty.dat – it has no grid). The order is just the
+  column layout, not a priority.
+- **The text turns light green when every source agrees – per field.**
+  For a US call the web sources show `MA/5` and cty.dat shows bare `5`;
+  that's still green because the state and the zone each agree on their
+  own. But if the three web sources say zone 14 and **cty.dat says 15**,
+  the zone field disagrees and the text stays white – with cty.dat's `15`
+  visible in slot 0 so you know to ask on the air. A source that simply
+  didn't report a field is not a disagreement.
 - For a **US station** the main area shows the **shortest operator name**
   (printed once) followed by one **`state/zone`** token per source, e.g.
   `FRED - MA/5 MA/5 MA/5`. A slot shows just the state when that source has
@@ -179,6 +188,8 @@ udp_port=12060
 cache_days=30
 cache_file=callbook_cache.json           (VHF: n1mm_VHFcallbook_cache.json)
 cache_persist=yes                        (no = in-memory only, never writes)
+cty_update=yes                           (no = don't auto-download cty.dat)
+# cty_file=C:\ham\cty.dat                (use your own cty.dat instead)
 
 # Optional - paid QRZ.com XML service (extra state / locator slot):
 # qrz_username=S55OO
@@ -186,9 +197,10 @@ cache_persist=yes                        (no = in-memory only, never writes)
 ```
 
 - Each `.cfg` and its matching `cache_file` are read/written from the same
-  folder as the executable/script. The app also writes a small
-  `*_window.json` (last window position) and `qrz_session.json` (QRZ XML
-  session key) there – both are safe to delete and are gitignored.
+  folder as the executable/script. The app also writes `*_window.json`
+  (last window position), `qrz_session.json` (QRZ XML session key) and
+  `cty.dat` (the auto-refreshed prefix database) there – all safe to
+  delete, all gitignored except the bundled fallback `cty.dat`.
 - Both `.cfg` files are **gitignored** – they hold your QRZ login in
   **plain text**, so they are never committed and never land in a shared
   build. Only the `*.cfg.template` files (with placeholder credentials) are
@@ -206,8 +218,8 @@ Requires Python + PyInstaller:
 ```bat
 python -m pip install pyinstaller
 
-REM HF callbook:
-python -m PyInstaller --onefile --windowed --name n1mm_callbook --manifest manifest.xml n1mm_callbook.py
+REM HF callbook (bundles cty.dat):
+python -m PyInstaller --onefile --windowed --name n1mm_callbook --manifest manifest.xml --add-data "cty.dat;." n1mm_callbook.py
 copy /Y dist\n1mm_callbook.exe n1mm_callbook.exe
 
 REM VHF locator variant:
@@ -236,6 +248,7 @@ n1mm_VHFcallbook.cfg      – VHF config (gitignored; may hold QRZ login in plai
 n1mm_VHFcallbook_cache.json – VHF local lookup cache (auto-created, gitignored)
 callbook_window.json / n1mm_VHFcallbook_window.json – last window position (auto, gitignored)
 qrz_session.json     – cached QRZ XML session key (auto-created, gitignored)
+cty.dat              – DXCC/CQ-zone prefix DB (AD1C); bundled + auto-refreshed
 Callbook.bat         – source launcher (no console)
 manifest.xml         – PyInstaller manifest (common controls)
 n1mm_callbook.spec, n1mm_VHFcallbook.spec – PyInstaller build settings
@@ -246,14 +259,23 @@ dev\bench_latency.py – lookup-latency benchmark
 ```
 
 > QRZ.com XML needs a **paid subscription** for full records. Even without
-> it, QRZ returns the US state (and a plain name/address) for a login, so
-> the HF app still gets its three state sources (QRZ XML, QRZCQ, HamQTH);
-> the VHF app's locators are all free (QRZCQ, HamQTH, QRZ public page).
+> it the HF app is useful: `cty.dat` gives country + CQ zone offline for
+> free, and QRZCQ + HamQTH add the US/VE state and the operator name.
 
 ---
 
 ## 7. Changelog
 
+- **2.12 (HF) / 1.16 (VHF)** – HF adds an **offline `cty.dat` slot**
+  (AD1C / country-files.com): DXCC country + CQ zone instantly, before any
+  network source. cty.dat's entity default is refined from the call area
+  for the multi-zone North American entities (VE7 → 3, VE3–6 → 4, W6/7 →
+  3, …) and, for VE, the province too. A copy is bundled and a fresh one
+  auto-downloads into the data folder (`cty_update=no` to disable,
+  `cty_file=` to override). The green "sources agree" check is now
+  **per field**, so cty.dat's bare zone lines up with the web sources'
+  `state/zone` – and when cty.dat's zone contradicts them the text stays
+  white with cty.dat's value visible in slot 0.
 - **2.11 (HF) / 1.15 (VHF)** – the main text turns **light green when every
   source that answered agrees**. VHF locators are now separated by ` - `
   (`JN76HD - JN76HD - JN76HD`) instead of plain spaces, and a source that
@@ -312,3 +334,8 @@ their own permissive licenses (PSF and BSD-style); PyInstaller's
 bootloader carries an explicit exception that allows shipping the frozen
 app under any license. Nothing in the toolchain restricts this
 dedication.
+
+`cty.dat` is maintained by **Jim Reisert AD1C** and distributed by
+[country-files.com](https://www.country-files.com/), free for anyone to
+use. It is bundled here and auto-refreshed for convenience; it is not
+covered by this project's public-domain dedication.

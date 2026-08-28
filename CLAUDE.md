@@ -26,6 +26,7 @@ PyInstaller is only needed to build the EXEs. Public domain (Unlicense).
 | `packet_callsign()` | pull the worked call out of a `LookupInfo`/`ContactInfo`/`ContactReplace` XML packet (`RadioInfo` is ignored — it carries the local op's own call) |
 | `normalize_call()` / `normalize_grid()` | sanitise the call; upper-case locators so a case-only difference isn't seen as a disagreement |
 | `_HttpPool` / `http_get()` | one kept-alive HTTPS connection per host, gzip, per-host lock, stale-connection retry, busy-host fallback to a one-shot connection. **All source fetches go through `http_get`.** |
+| `parse_cty` / `cty_lookup` / `cty_load` / `cty_autoupdate` | offline DXCC/CQ-zone source from cty.dat. `parse_cty` -> (exact `{=CALL}`, prefixes) records. `cty_lookup` = compound-call split (`_cty_basecall`) -> exact/longest-prefix -> `_cty_refine` (US/VE call-area zone + VE province, since cty.dat only carves out the rare zones). `cty_load` tries [config `cty_file`, `<data>/cty.dat`, bundled]. `cty_autoupdate` background-downloads a fresh one when `<data>/cty.dat` is missing or >30 days old. HF-only (`USE_CTY`). |
 | `Cache` | JSON cache keyed by call. `put()` only marks dirty; `flush()` (driven from `_poll_inbox`, forced in `on_close`) writes at most once per `FLUSH_INTERVAL`. Stores only `_CACHE_FIELDS`. Prunes expired / wrong-`CACHE_SCHEMA` entries on load. `persist=False` (`cache_persist=no`) = in-memory only. |
 | `qrzcq_lookup` / `hamqth_lookup` / `qrz_lookup` / `qrzdb_lookup` | the sources. Each returns a dict with the same keys (`name qth grid class state cqzone country`) or `None` on any failure. `Cache` stores only `_CACHE_FIELDS` (the 5 the display reads). `qrz_lookup` needs paid QRZ XML creds; `qrzdb_lookup` (VHF-only) computes the grid from `cs_lat`/`cs_lon` on the public QRZ page. |
 | `qrz_session_load()` / `_qrz_session_save()` | persist the QRZ XML session key to `qrz_session.json` so a restart skips the ~0.6 s re-login |
@@ -43,11 +44,18 @@ once every slot is in.
 
 `_render_slots` builds the display string. `_source_value` joins the
 `SLOT_FIELDS` into one `a/b` token per slot; the `state` field is dropped
-when the source's country is non-US (`_US_NAMES`), but `cqzone` is kept.
-`_is_dx` decides the `name (country)` vs `name` prefix. Slots are joined
-by `SLOT_SEP`; an empty slot is `SLOT_EMPTY` (`·`), a pending one
-`SLOT_PENDING` (`…`). When `all_done` and every real value matches (>=2 of
-them) the text fill is `TEXT_AGREE` (light green) instead of `TEXT_DEFAULT`.
+unless the country is US/Canada (`_keeps_state` / `_STATE_COUNTRIES`).
+`_is_dx` (US/Canada -> False) decides the `name (country)` vs plain-name
+prefix. Slots are joined by `SLOT_SEP`; empty slot `SLOT_EMPTY` (`·`),
+pending `SLOT_PENDING` (`…`).
+
+`_agree` decides the green text: **per field**, not per whole token. For
+each `SLOT_FIELD`, every source that reported a value must agree, and >=1
+field must have >=2 sources confirming. So cty.dat's bare `5` lines up
+with the web sources' `MA/5` (state and zone each agree); but if cty.dat's
+zone contradicts the web sources the field disagrees -> white. A source
+that just didn't report a field is not a disagreement. Green also needs
+`all_done`.
 
 ### Class attributes a variant overrides
 
@@ -57,7 +65,8 @@ APP_TITLE
 SLOT_FIELDS   # HF ("state","cqzone");  VHF ("grid",)
 SLOT_SEP      # HF " " (name already has " - " after it);  VHF " - "
 SHOW_NAME     # HF True; VHF False
-LOOKUP_CHAIN  # the free sources; qrz_lookup is prepended by __init__ when creds exist
+USE_CTY       # HF True (cty_lookup prepended as slot 0); VHF False
+LOOKUP_CHAIN  # the free sources; cty_lookup then qrz_lookup are prepended by __init__
 ```
 
 ## Gotchas / history (don't reintroduce these bugs)
@@ -70,9 +79,15 @@ LOOKUP_CHAIN  # the free sources; qrz_lookup is prepended by __init__ when creds
   `self.VERSION`. The VHF title bar used to show the HF version because it
   referenced the base module's global.
 - **Bump `CACHE_SCHEMA`** only when an old entry would now display *wrong*
-  (a field's meaning or normalisation changed) — not merely differently.
-  v1→v2 added `cqzone` + upper-cased locators, so it bumped. v2.10 trimmed
-  the stored fields but old wider entries still read fine, so it did not.
+  (a field's meaning changed, or the number of slots changed) — not merely
+  differently. v1→v2 added `cqzone` + upper-cased locators; v3 prepended
+  the cty.dat slot (old entries have one fewer). v2.10 only trimmed stored
+  fields and old wider entries still read fine, so it did *not* bump.
+- **cty.dat only carves out the rare CQ zones** (USA: the ~5000 `=CALL`
+  list; Canada: zones 1 & 2). `_cty_refine` derives the rest from the call
+  area — the `_US_AREA_ZONE` / `_VE_AREA` tables. W4 is genuinely split
+  (AL/KY/TN=4, the rest=5) so it defaults to 5; the online sources are the
+  cross-check. Do not "fix" a US zone that looks wrong by editing cty.dat.
 - **`normalize_grid` is applied twice**: in each lookup (so the cache is
   clean) and in `_source_field` on read (so a stale cache entry still
   displays consistently).
@@ -80,11 +95,16 @@ LOOKUP_CHAIN  # the free sources; qrz_lookup is prepended by __init__ when creds
   (fields just go empty → `·`). `dev/bench_latency.py` doubles as a quick
   "are the sources still parsing?" check before a contest.
 
-## Files the app writes (all gitignored, all safe to delete)
+## Files the app writes (all safe to delete)
 
-`*_cache.json` (lookup cache), `*_window.json` (last window position,
-restored on start — position only, not size), `qrz_session.json` (QRZ XML
-session key). They live next to the `.cfg`/exe.
+`*_cache.json` (lookup cache), `*_window.json` (last window position —
+position only, not size), `qrz_session.json` (QRZ XML session key),
+`cty.dat` (auto-refreshed prefix DB). They live next to the `.cfg`/exe.
+All gitignored **except** `cty.dat`, which is tracked as the bundled
+fallback (PyInstaller ships it via `--add-data "cty.dat;."`, extracted to
+`sys._MEIPASS`; `_resource_path()` finds it). Running from source, the
+auto-download target *is* the tracked file — the 30-day age check keeps
+that rare; if a refresh lands, just commit it.
 
 **Never commit `callbook.cfg` / `n1mm_VHFcallbook.cfg`** — they hold the
 QRZ login in plain text. Only `*.cfg.template` (placeholders) is tracked.
@@ -92,7 +112,7 @@ QRZ login in plain text. Only `*.cfg.template` (placeholders) is tracked.
 ## Build
 
 ```bat
-python -m PyInstaller --onefile --windowed --name n1mm_callbook --manifest manifest.xml --noconfirm n1mm_callbook.py
+python -m PyInstaller --onefile --windowed --name n1mm_callbook --manifest manifest.xml --add-data "cty.dat;." --noconfirm n1mm_callbook.py
 python -m PyInstaller --onefile --windowed --name n1mm_VHFcallbook --manifest manifest.xml --noconfirm n1mm_VHFcallbook.py
 copy /Y dist\n1mm_callbook.exe .
 copy /Y dist\n1mm_VHFcallbook.exe .

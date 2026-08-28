@@ -11,24 +11,27 @@ sources stand out and the operator can pick the right one. For non-US
 (DX) stations the HF window shows the operator name and country followed
 by the CQ zone from each source.
 
-QRZCQ.com is a public, free callbook that needs no account or API key -
-each callsign has a page at https://www.qrzcq.com/call/<CALL> whose
-lookup info is parsed from the HTML. HamQTH.com and (VHF) the QRZ.com
-public page back it up; the paid QRZ.com XML service can also be added
-when credentials are configured.
+The HF window's left-most slot is offline: cty.dat (AD1C /
+country-files.com) gives the DXCC country and CQ zone instantly, before
+any network source responds. A copy is bundled and a fresh one is
+auto-downloaded into the data folder. The network sources - QRZCQ.com and
+HamQTH.com (free, scraped from their public pages) and the optional paid
+QRZ.com XML service - then confirm it or, rarely, disagree; the text is
+green only when cty.dat and the network sources all agree.
 
 Lookups are cached locally in a JSON file to avoid repeated network
 fetches for the same callsign and to stay polite to the server.
 
-Made by S55OO with AI assistance.
+Made by S55OO with AI assistance. cty.dat (c) Jim Reisert AD1C,
+country-files.com - free to redistribute.
 
-Version: 2.11
+Version: 2.12
 
 Usage:
     python n1mm_callbook.py [--port 12060] [--config callbook.cfg]
 """
 
-__version__ = "2.11"
+__version__ = "2.12"
 
 import argparse
 import base64
@@ -46,7 +49,7 @@ import tkinter as tk
 import urllib.parse
 import xml.etree.ElementTree as ET
 
-USER_AGENT = "Mozilla/5.0 N1MM_callbook/2.11"
+USER_AGENT = "Mozilla/5.0 N1MM_callbook/2.12"
 HAMQTH_UA = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
     "(KHTML, like Gecko) Chrome/126.0 Safari/537.36"
@@ -223,6 +226,209 @@ def http_get(url, headers=None, timeout=15):
     return _POOL.get(url, headers, timeout)
 
 
+# --- cty.dat: DXCC / CQ-zone prefix database (AD1C, country-files.com) ------
+#
+# cty.dat resolves country + continent for essentially every call, and the
+# CQ zone for single-zone entities and the ~5000 listed "=CALL" contesters.
+# For the multi-zone North American entities it only carves out the rare
+# zones (USA: the =CALL list; Canada: zones 1 & 2), leaving everyone else at
+# the entity default - so we refine those from the call-area digit below.
+
+CTY_URL = "https://www.country-files.com/cty/cty.dat"
+CTY_MAX_AGE_DAYS = 30
+
+_US_AREA_ZONE = {"1": 5, "2": 5, "3": 5, "4": 5, "5": 4,
+                 "6": 3, "7": 3, "8": 4, "9": 4, "0": 4}
+_VE_AREA = {  # digit -> (province, CQ zone)
+    "1": ("NS", 5), "2": ("QC", 5), "3": ("ON", 4), "4": ("MB", 4),
+    "5": ("SK", 4), "6": ("AB", 4), "7": ("BC", 3), "8": ("NT", 1),
+    "9": ("NB", 5), "0": ("", 5),
+}
+_VE_PREFIX = {  # prefixes cty.dat already zones, but with no province
+    "VO1": ("NL", 5), "VO2": ("NL", 2), "VY1": ("YT", 1),
+    "VY2": ("PE", 5), "VY0": ("NU", 1),
+}
+_CALL_SUFFIXES = {"P", "M", "MM", "AM", "A", "QRP", "QRPP", "LH", "J", "R", "B"}
+_CTY = {"exact": {}, "prefixes": {}}
+
+
+def _cty_int(s):
+    try:
+        return int(str(s).strip())
+    except (TypeError, ValueError):
+        return 0
+
+
+def parse_cty(text):
+    """Parse cty.dat text into (exact, prefixes) dicts of records.
+
+    record = {"country", "cqzone", "ituzone", "continent"}.
+    exact keys are full callsigns (the '=CALL' entries), prefix keys are
+    matched longest-first at lookup time.
+    """
+    exact, prefixes = {}, {}
+    for block in text.replace("\r\n", "\n").split(";"):
+        block = block.strip()
+        if not block:
+            continue
+        header, _, plist = block.partition("\n")
+        cols = header.split(":")
+        if len(cols) < 8:
+            continue
+        base = {
+            "country": cols[0].strip(),
+            "cqzone": _cty_int(cols[1]),
+            "ituzone": _cty_int(cols[2]),
+            "continent": cols[3].strip(),
+        }
+        for tok in plist.replace("\n", "").split(","):
+            tok = tok.strip()
+            if not tok:
+                continue
+            rec = dict(base)
+            m = re.search(r"\((\d+)\)", tok)
+            if m:
+                rec["cqzone"] = int(m.group(1))
+            m = re.search(r"\[(\d+)\]", tok)
+            if m:
+                rec["ituzone"] = int(m.group(1))
+            m = re.search(r"\{([A-Za-z]+)\}", tok)
+            if m:
+                rec["continent"] = m.group(1)
+            key = re.split(r"[(\[{<~]", tok, 1)[0]
+            is_exact = key.startswith("=")
+            key = key.lstrip("=").upper()
+            if key:
+                (exact if is_exact else prefixes)[key] = rec
+    return exact, prefixes
+
+
+def _cty_basecall(call):
+    """Split a compound call into (base, area).
+
+    base = the token that carries the DXCC/zone (DL/S53ZO -> DL,
+    S53ZO/W4 -> W4, VP2E/G3TXF -> VP2E, S53ZO/P -> S53ZO).
+    area = a lone trailing digit ("W1AW/4" -> area "4"), else "".
+    """
+    c = call.upper().strip()
+    if "/" not in c:
+        return c, ""
+    area, parts = "", []
+    for p in c.split("/"):
+        if not p or p in _CALL_SUFFIXES:
+            continue
+        if len(p) == 1 and p.isdigit():
+            area = p
+        else:
+            parts.append(p)
+    if not parts:
+        return c.replace("/", ""), area
+    if len(parts) == 1:
+        return parts[0], area
+    short = min(parts, key=len)
+    return (short if len(short) <= 4 else parts[0]), area
+
+
+def _cty_refine(base, area, rec):
+    """cty.dat leaves most US/VE calls at the entity default zone; derive
+    the real CQ zone (and, for VE, the province) from the call area digit -
+    an explicit ``/N`` suffix if present, otherwise the digit in the call."""
+    country = rec.get("country", "")
+    if country == "United States":
+        digit = area or (re.match(r"[A-Z]{1,2}(\d)", base) or [None, ""])[1]
+        # honour an explicit /N always; a natural digit only when cty.dat
+        # left the call at the entity default (so we don't clobber a =CALL).
+        if digit in _US_AREA_ZONE and (area or rec.get("cqzone") == 5):
+            rec = dict(rec, cqzone=_US_AREA_ZONE[digit])
+    elif country == "Canada":
+        for pfx, (prov, zone) in _VE_PREFIX.items():
+            if base.startswith(pfx):
+                return dict(rec, state=prov, cqzone=zone)
+        m = re.match(r"(?:VA|VE|VB|VC|VG|VX|CF|CG|CJ|CK)(\d)", base)
+        digit = area or (m.group(1) if m else "")
+        if digit in _VE_AREA and (area or rec.get("cqzone") == 5):
+            prov, zone = _VE_AREA[digit]
+            rec = dict(rec, state=prov, cqzone=zone)
+    return rec
+
+
+def cty_lookup(call):
+    """Offline DXCC / CQ-zone lookup. Same dict shape as the other sources
+    (name/state/grid empty except VE province); None if cty.dat isn't
+    loaded or the call doesn't resolve."""
+    prefixes = _CTY["prefixes"]
+    if not prefixes:
+        return None
+    c = call.upper().strip()
+    base, area = _cty_basecall(c)
+    rec = _CTY["exact"].get(c) or _CTY["exact"].get(base)
+    if rec is None:
+        for n in range(len(base), 0, -1):
+            rec = prefixes.get(base[:n])
+            if rec:
+                break
+    if not rec:
+        return None
+    rec = _cty_refine(base, area, rec)
+    return {
+        "name": "", "qth": "", "grid": "", "class": "",
+        "state": rec.get("state", ""),
+        "cqzone": str(rec.get("cqzone") or ""),
+        "country": rec.get("country", ""),
+        "continent": rec.get("continent", ""),
+    }
+
+
+def cty_load(paths):
+    """Load the first readable cty.dat from *paths* (tried in order)."""
+    for path in paths:
+        if not path:
+            continue
+        try:
+            with open(path, encoding="utf-8", errors="replace") as fh:
+                text = fh.read()
+        except OSError:
+            continue
+        exact, prefixes = parse_cty(text)
+        if len(prefixes) > 100:  # sanity: a real file has hundreds
+            _CTY["exact"], _CTY["prefixes"] = exact, prefixes
+            return True
+    return False
+
+
+def cty_autoupdate(dest, on_done=None):
+    """If *dest* is missing or older than CTY_MAX_AGE_DAYS, download a fresh
+    cty.dat there in a background thread and call on_done() on success."""
+    try:
+        if (time.time() - os.path.getmtime(dest)) < CTY_MAX_AGE_DAYS * 86400:
+            return
+    except OSError:
+        pass  # missing -> fetch
+
+    def worker():
+        text = http_get(CTY_URL, {"User-Agent": USER_AGENT}, timeout=20)
+        if not text or "United States:" not in text:
+            return
+        try:
+            tmp = dest + ".tmp"
+            with open(tmp, "w", encoding="utf-8") as fh:
+                fh.write(text)
+            os.replace(tmp, dest)
+        except OSError:
+            return
+        if on_done:
+            on_done()
+
+    threading.Thread(target=worker, daemon=True).start()
+
+
+def _resource_path(name):
+    base = getattr(sys, "_MEIPASS", None) or os.path.dirname(
+        os.path.abspath(__file__)
+    )
+    return os.path.join(base, name)
+
+
 def local_interfaces():
     ips = []
     try:
@@ -273,12 +479,12 @@ def listener_loop(bind_ip, port, on_packet, stop):
         pass
 
 
-# Bump whenever the per-source result shape changes (new field, different
-# normalisation, ...) so stale entries from an older build are re-fetched
-# once instead of being shown forever.
+# Bump whenever an old cached entry would now display *wrong* (a field's
+# meaning changed, or the set of slots changed) so it is re-fetched once.
 #   1  original per-source dicts
 #   2  + 'cqzone' field, locators upper-cased
-CACHE_SCHEMA = 2
+#   3  cty.dat prepended as HF slot 0 - old entries have one fewer slot
+CACHE_SCHEMA = 3
 
 # The only per-source fields the display ever reads. The cache stores just
 # these, so a contest's worth of entries stays small on disk and in RAM.
@@ -700,6 +906,15 @@ def run(app_class, config_name, cache_name, description):
     win_file = os.path.splitext(cache_file)[0] + "_window.json"
     qrz_session_load(os.path.join(data_dir, "qrz_session.json"))
 
+    # cty.dat: a copy is bundled; a fresh one auto-downloads into the data
+    # folder (unless cty_update=no) and is preferred once present.
+    cty_dst = os.path.join(data_dir, "cty.dat")
+    cty_load([settings.get("cty_file"), cty_dst, _resource_path("cty.dat")])
+    if settings.get("cty_update", "yes").strip().lower() not in (
+        "no", "false", "0", "off",
+    ):
+        cty_autoupdate(cty_dst, on_done=lambda: cty_load([cty_dst]))
+
     # Optional QRZ.com XML service (paid subscription). Empty credentials
     # keep QRZ out of the lookup chain.
     root = tk.Tk()
@@ -734,6 +949,9 @@ class CallbookApp:
     # Show the operator name too (printed once, shortest of the sources).
     # The VHF variant only needs the locator, hence False there.
     SHOW_NAME = True
+    # Prepend the offline cty.dat source (country + CQ zone). The VHF app
+    # only shows a grid, which cty.dat doesn't have, so it sets this False.
+    USE_CTY = True
     # Lookup sources run in order; every source's value is kept separately.
     # Variants can add more sources.
     LOOKUP_CHAIN = (qrzcq_lookup, hamqth_lookup)
@@ -751,6 +969,10 @@ class CallbookApp:
         # are queried in parallel, so each slot fills as soon as that
         # source answers regardless of its position in the chain.
         chain = []
+        if self.USE_CTY:
+            # cty.dat is offline and instant, so slot 0 fills at once with
+            # the DXCC country + CQ zone while the network sources load.
+            chain.append(cty_lookup)
         if qrz_username and qrz_password:
             chain.append(
                 functools.partial(
@@ -954,37 +1176,64 @@ class CallbookApp:
             v = v.upper()
         return v
 
-    _US_NAMES = ("united states", "usa", "united states of america", "us")
+    # The state/province column is meaningful for the US and Canada; for
+    # any other country a "state" field is a foreign subdivision (e.g. QRZ
+    # XML gives "HE" for a DL call) and is dropped.
+    _STATE_COUNTRIES = (
+        "united states", "usa", "united states of america", "us", "canada",
+    )
+
+    def _keeps_state(self, info):
+        c = self._source_field(info, "country").lower()
+        return (not c) or c in self._STATE_COUNTRIES
 
     def _is_dx(self, sources):
-        # True when at least one source reports a non-US country - used to
-        # switch the HF window from "state" mode to "name + country".
+        # True when the worked station is not in the US/Canada - the HF
+        # window then shows "name (country)" instead of a state column.
         for s in sources:
             c = self._source_field(s, "country").lower()
-            if c and c not in self._US_NAMES:
-                return True
+            if c:
+                return c not in self._STATE_COUNTRIES
         return False
 
     def _source_value(self, info):
         # One slot token, e.g. "MA/5" (state + CQ zone) or just "5" for a
-        # DX station that has no US state. Empty when the source gave none
-        # of the SLOT_FIELDS.
+        # DX station that has no US/VE subdivision. Empty when the source
+        # gave none of the SLOT_FIELDS.
         if not info:
             return ""
         parts = []
         for key in self.SLOT_FIELDS:
             v = self._source_field(info, key)
-            # The state column is US-only. When the source reports a non-US
-            # country its "state" is a foreign subdivision (e.g. QRZ XML
-            # gives "HE" for a DL call) - drop it, but keep the CQ zone,
-            # which is meaningful worldwide.
-            if v and key == "state":
-                country = self._source_field(info, "country").lower()
-                if country and country not in self._US_NAMES:
-                    v = ""
+            if v and key == "state" and not self._keeps_state(info):
+                v = ""
             if v:
                 parts.append(v)
         return "/".join(parts)
+
+    def _agree(self, finished):
+        # Green requires per-FIELD agreement: for each SLOT_FIELD, every
+        # source that reported it must report the same value, and at least
+        # one field must have two or more sources confirming it. So "all
+        # the online sources say zone 14 but cty.dat says 15" is NOT green
+        # (the zone field disagrees), while "MA/5" from the web sources +
+        # bare "5" from cty.dat IS (state and zone each agree on their own).
+        confirmed = False
+        for key in self.SLOT_FIELDS:
+            vals = []
+            for s in finished:
+                if not s:
+                    continue
+                v = self._source_field(s, key)
+                if v and key == "state" and not self._keeps_state(s):
+                    continue
+                if v:
+                    vals.append(v)
+            if len(set(vals)) > 1:
+                return False
+            if len(vals) >= 2:
+                confirmed = True
+        return confirmed
 
     def _best_name(self, sources):
         # The operator name, printed only once; out of the candidates from
@@ -1029,10 +1278,8 @@ class CallbookApp:
                 vals.append(v if v else SLOT_EMPTY)
         all_done = not pending
         have_name = self.SHOW_NAME and bool(self._best_name(finished))
-        # Every source that answered with a real value - if they all match
-        # (and there are at least two), the operator can trust it: green.
         real_vals = [v for v in vals if v not in (SLOT_EMPTY, SLOT_PENDING)]
-        agree = all_done and len(real_vals) >= 2 and len(set(real_vals)) == 1
+        agree = all_done and self._agree(finished)
         fill = TEXT_DEFAULT
         if not finished:
             text = SLOT_PENDING

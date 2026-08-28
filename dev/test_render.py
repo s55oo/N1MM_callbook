@@ -58,6 +58,11 @@ def main():
     US = {"name": "Fred", "state": "MA", "cqzone": "5", "country": "United States"}
     US2 = {"name": "Frederick", "state": "MA", "cqzone": "5", "country": "United States"}
     USnz = {"name": "Fred", "state": "MA", "cqzone": "", "country": "United States"}
+    USbadz = {"name": "Fred", "state": "MA", "cqzone": "4", "country": "United States"}
+    CTY_US = {"state": "", "cqzone": "5", "country": "United States"}  # cty.dat slot
+    CTY_USbad = {"state": "", "cqzone": "4", "country": "United States"}
+    CTY_VE = {"state": "BC", "cqzone": "3", "country": "Canada"}
+    VE = {"name": "Jim", "state": "BC", "cqzone": "3", "country": "Canada"}
     DL = {"name": "Hans", "state": "HE", "cqzone": "14", "country": "Germany"}
     DX = {"name": "Hans", "state": "", "cqzone": "14", "country": "Germany"}
     DXnz = {"name": "Hans", "state": "", "cqzone": "", "country": "Germany"}
@@ -72,6 +77,9 @@ def main():
         return app.canvas.fill
 
     ok &= check("HF US, all agree", r(hf, [US, US2, US]), "Fred - MA/5 MA/5 MA/5")
+    ok &= check("HF US + cty.dat slot", r(hf, [CTY_US, US, US2]), "Fred - 5 MA/5 MA/5")
+    ok &= check("HF VE, province + zone from cty.dat", r(hf, [CTY_VE, VE, VE]),
+                "Jim - BC/3 BC/3 BC/3")
     ok &= check("HF US, one source has no zone", r(hf, [US, USnz, US]), "Fred - MA/5 MA MA/5")
     ok &= check("HF US, 2 slots pending", r(hf, [US, None, None], {1, 2}), "Fred - MA/5 … …")
     ok &= check("HF DX, foreign state dropped, zone kept", r(hf, [DL, DX, DX]), "Hans (Germany) - 14 14 14")
@@ -96,8 +104,15 @@ def main():
                 rf(vh, [{"grid": "KN04AX"}, {"grid": "KN04BX"}, {"grid": "KN04AX"}]), cb.TEXT_DEFAULT)
     ok &= check("VHF one still pending -> not green yet",
                 rf(vh, [{"grid": "KN04AX"}, {"grid": "KN04AX"}, None], {2}), cb.TEXT_DEFAULT)
-    ok &= check("HF all agree -> green text", rf(hf, [US, US2, US]), cb.TEXT_AGREE)
-    ok &= check("HF one source lacks zone -> default text", rf(hf, [US, USnz, US]), cb.TEXT_DEFAULT)
+    ok &= check("HF all agree -> green", rf(hf, [US, US2, US]), cb.TEXT_AGREE)
+    ok &= check("HF cty.dat + web all agree -> green",
+                rf(hf, [CTY_US, US, US2]), cb.TEXT_AGREE)
+    ok &= check("HF web agree but cty.dat zone differs -> white",
+                rf(hf, [CTY_USbad, US, US2]), cb.TEXT_DEFAULT)
+    ok &= check("HF two sources disagree on zone -> white",
+                rf(hf, [US, USbadz, US2]), cb.TEXT_DEFAULT)
+    ok &= check("HF one source just missing the zone -> still green",
+                rf(hf, [US, USnz, US2]), cb.TEXT_AGREE)
 
     # cache schema: an entry without the current version is refetched
     p = tempfile.mktemp(suffix=".json")
@@ -152,6 +167,24 @@ def main():
     m = cb.CallbookApp._GEOM_RE.match("344x117+321+123")
     ok &= check("geometry regex keeps position only",
                 "{}{}".format(*m.groups()) if m else None, "+321+123")
+
+    # cty.dat: parser + call-area zone refinement (needs the bundled file)
+    cty = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                       "cty.dat")
+    if cb.cty_load([cty]):
+        def z(call):
+            r = cb.cty_lookup(call)
+            return int(r["cqzone"]) if r and r["cqzone"] else None
+        for call, want in [("W1AW", 5), ("K3LR", 5), ("W6YX", 3), ("K7RAT", 3),
+                           ("W1AW/7", 3), ("K1TTT/4", 5), ("VE7CC", 3),
+                           ("VA3XYZ", 4), ("VE2IM", 2), ("VY2LI", 5),
+                           ("DL1AA", 14), ("9A1A", 15), ("JA1XYZ", 25)]:
+            ok &= check("cty zone %s" % call, z(call), want)
+        ok &= check("cty VE province", cb.cty_lookup("VE7CC")["state"], "BC")
+        ok &= check("cty portable DL/K1TTT", cb.cty_lookup("DL/K1TTT")["country"],
+                    "Fed. Rep. of Germany")
+    else:
+        print("  (skip cty.dat tests - bundled cty.dat not found)")
 
     print("\nALL PASS" if ok else "\nSOME FAILED")
     sys.exit(0 if ok else 1)

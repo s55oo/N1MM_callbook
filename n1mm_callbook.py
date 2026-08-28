@@ -14,13 +14,13 @@ fetches for the same callsign and to stay polite to the server.
 
 Made by S55OO with AI assistance.
 
-Version: 1.5
+Version: 1.7
 
 Usage:
     python n1mm_callbook.py [--port 12060] [--config callbook.cfg]
 """
 
-__version__ = "1.5"
+__version__ = "1.7"
 
 import argparse
 import base64
@@ -36,7 +36,11 @@ import urllib.request
 import urllib.parse
 import xml.etree.ElementTree as ET
 
-USER_AGENT = "Mozilla/5.0 N1MM_callbook/1.5"
+USER_AGENT = "Mozilla/5.0 N1MM_callbook/1.7"
+HAMQTH_UA = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/126.0 Safari/537.36"
+)
 
 DEFAULT_PORT = 12060
 DEFAULT_CACHE_DAYS = 30
@@ -148,7 +152,7 @@ def listener_loop(bind_ip, port, on_packet, stop):
 
 
 class Cache:
-    """Very small persistent JSON cache for HamQTH lookups."""
+    """Very small persistent JSON cache for callbook lookups."""
 
     def __init__(self, path, days):
         self.path = path
@@ -240,6 +244,47 @@ def qrzcq_lookup(call, timeout=15):
     }
 
 
+def hamqth_lookup(call, timeout=15):
+    """Query HamQTH.com public page for a callsign.
+
+    HamQTH mirrors the same fields as QRZCQ (name, QTH, grid locator,
+    country, ...) and is used as an additional/fallback source - most
+    useful for the VHF variant, where the "Grid" row carries the
+    QRA/maidenhead locator of the worked station.
+
+    Returns a dict in the same shape as qrzcq_lookup, or None on
+    network error. Fields that are absent or hidden come back empty.
+    """
+    url = "https://www.hamqth.com/" + urllib.parse.quote(call.upper())
+    try:
+        req = urllib.request.Request(url, headers={"User-Agent": HAMQTH_UA})
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            raw = resp.read().decode("utf-8", errors="replace")
+    except OSError:
+        return None
+
+    def grab(label):
+        m = re.search(
+            r'<td[^>]*class="infoDesc"[^>]*>\s*' + re.escape(label) + r":\s*</td>"
+            r"\s*<td[^>]*>(.*?)</td>",
+            raw,
+            re.S | re.I,
+        )
+        if not m:
+            return ""
+        val = re.sub(r"<[^>]+>", " ", m.group(1))
+        return re.sub(r"\s+", " ", val).strip()
+
+    return {
+        "name": grab("Name"),
+        "qth": grab("QTH"),
+        "grid": grab("Grid"),
+        "class": grab("Class"),
+        "state": grab("US State") or grab("State"),
+        "country": grab("Country"),
+    }
+
+
 def app_dir():
     if getattr(sys, "frozen", False):
         return os.path.dirname(sys.executable)
@@ -247,6 +292,12 @@ def app_dir():
 
 
 class CallbookApp:
+    APP_TITLE = "N1MM Callbook"
+    # Lookup sources tried in order; results are merged (first non-empty
+    # value for each field wins). Variants like the VHF app add HamQTH as
+    # an extra source.
+    LOOKUP_CHAIN = (qrzcq_lookup,)
+
     def __init__(self, root, cache_path, port, cache_days):
         self.root = root
         self.port = port
@@ -254,6 +305,7 @@ class CallbookApp:
         self.current = None
         self._fetching = False
         self._debounce = None
+        self.lookup_chain = self.LOOKUP_CHAIN
         self.local = set(local_interfaces())
         self.local.add("127.0.0.1")
         self._build()
@@ -268,14 +320,14 @@ class CallbookApp:
         self.root.after(500, self._flush_pending)
 
     def _build(self):
-        self.root.title("N1MM Callbook  -  UDP {}  v{}".format(self.port, __version__))
+        self.root.title("{}  -  UDP {}  v{}".format(self.APP_TITLE, self.port, __version__))
         self.root.attributes("-topmost", True)
         frame = tk.Frame(self.root, padx=6, pady=4)
         frame.pack()
         top = tk.Frame(frame)
         top.pack(fill=tk.X)
         tk.Label(
-            top, text="N1MM Callbook", font=("Segoe UI", 8, "bold")
+            top, text=self.APP_TITLE, font=("Segoe UI", 8, "bold")
         ).pack(side=tk.LEFT)
         self.help_icon = tk.PhotoImage(
             data=base64.b64decode(HELP_ICON_B64.encode("ascii"))
@@ -361,12 +413,28 @@ class CallbookApp:
         self._fetching = True
         threading.Thread(target=self._do_fetch, args=(call,), daemon=True).start()
 
+    def _run_lookup(self, call):
+        # Run every source in the chain and merge the fields. Returns
+        # (info, status) where status is "api error" only if every source
+        # failed to fetch (an empty page is "no data", not an error).
+        info = {}
+        any_error = False
+        for fn in self.lookup_chain:
+            res = fn(call)
+            if res is None:
+                any_error = True
+                continue
+            for key, val in res.items():
+                if val and not info.get(key):
+                    info[key] = val
+        if not info:
+            return None, "api error" if any_error else ""
+        return info, ""
+
     def _do_fetch(self, call):
-        info = qrzcq_lookup(call)
-        status = "api error"
+        info, status = self._run_lookup(call)
         if info is not None:
             self.cache.put(call, info)
-            status = ""
         self._fetching = False
         self._pending = (call, info, status)
 

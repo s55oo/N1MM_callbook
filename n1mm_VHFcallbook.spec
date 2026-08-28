@@ -2,7 +2,7 @@
 
 
 a = Analysis(
-    ['n1mm_callbook.py'],
+    ['n1mm_VHFcallbook.py'],
     pathex=[],
     binaries=[],
     datas=[],
@@ -22,7 +22,7 @@ exe = EXE(
     a.binaries,
     a.datas,
     [],
-    name='n1mm_callbook',
+    name='n1mm_VHFcallbook',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,

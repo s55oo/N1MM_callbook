@@ -1,0 +1,93 @@
+"""N1MM Logger+ VHF Locator lookup.
+
+A variant of the callbook app that shows the QRA/maidenhead locator
+(e.g. JN76JG) of the worked station instead of the operator name. Sends
+the same N1MM UDP packets through the exact same QRZCQ.com parsing, and
+falls back to the HamQTH.com public page when the locator is missing.
+
+Lookups are cached locally in n1mm_VHFcallbook_cache.json to stay polite
+to the servers.
+
+Made by S55OO with AI assistance.
+
+Version: 1.2
+
+Usage:
+    python n1mm_VHFcallbook.py [--port 12060] [--config n1mm_VHFcallbook.cfg]
+"""
+
+__version__ = "1.2"
+
+import argparse
+import os
+import sys
+import tkinter as tk
+
+import n1mm_callbook as cb
+
+CONFIG_NAME = "n1mm_VHFcallbook.cfg"
+CACHE_NAME = "n1mm_VHFcallbook_cache.json"
+
+
+class VHFApp(cb.CallbookApp):
+    APP_TITLE = "N1MM VHF Callbook"
+    # QRZCQ first; if the QRZCQ page lacks a locator, hamqth_lookup fills
+    # the grid (and other fields) in from HamQTH.com, and the result is
+    # cached as usual.
+    LOOKUP_CHAIN = (cb.qrzcq_lookup, cb.hamqth_lookup)
+
+    def _line(self, info):
+        # Show only the maidenhead locator (e.g. JN76JG) in the main area.
+        return (info.get("grid") or "").strip()
+
+
+def main():
+    parser = argparse.ArgumentParser(description="N1MM Logger+ VHF locator lookup")
+    parser.add_argument("--port", type=int, default=cb.DEFAULT_PORT)
+    parser.add_argument(
+        "--config",
+        default=os.path.join(cb.app_dir(), CONFIG_NAME),
+        help="config file (same folder as the exe by default)",
+    )
+    args = parser.parse_args()
+
+    settings = {}
+    if os.path.exists(args.config):
+        try:
+            with open(args.config, encoding="utf-8") as fh:
+                for line in fh:
+                    line = line.strip()
+                    if not line or line.startswith(("#", "[")):
+                        continue
+                    if "=" not in line:
+                        continue
+                    key, _, val = [p.strip() for p in line.partition("=")]
+                    settings[key.lower()] = val
+        except OSError:
+            pass
+
+    port = args.port
+    if "udp_port" in settings:
+        try:
+            port = int(settings["udp_port"])
+        except ValueError:
+            pass
+    cache_days = cb.DEFAULT_CACHE_DAYS
+    if "cache_days" in settings:
+        try:
+            cache_days = int(settings["cache_days"])
+        except ValueError:
+            pass
+    cache_file = os.path.join(cb.app_dir(), CACHE_NAME)
+    if "cache_file" in settings:
+        cache_file = os.path.abspath(
+            os.path.join(os.path.dirname(args.config), settings["cache_file"])
+        )
+
+    root = tk.Tk()
+    VHFApp(root, cache_file, port, cache_days)
+    root.mainloop()
+
+
+if __name__ == "__main__":
+    main()

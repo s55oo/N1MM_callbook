@@ -1,6 +1,6 @@
 # N1MM Callbook – N1MM Logger+ Contest Callbook
 
-> **Version:** 1.0 · Made by **S55OO** with AI assistance.
+> **Version:** 1.1 · Made by **S55OO** with AI assistance.
 
 A compact always-on-top window that listens to the N1MM Logger+ external
 UDP broadcast (XML, port **12060**) and automatically looks up the callsign

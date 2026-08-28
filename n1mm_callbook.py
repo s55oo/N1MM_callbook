@@ -14,13 +14,13 @@ fetches for the same callsign and to stay polite to the server.
 
 Made by S55OO with AI assistance.
 
-Version: 1.0
+Version: 1.1
 
 Usage:
     python n1mm_callbook.py [--port 12060] [--config callbook.cfg]
 """
 
-__version__ = "1.0"
+__version__ = "1.1"
 
 import argparse
 import base64
@@ -36,7 +36,7 @@ import urllib.request
 import urllib.parse
 import xml.etree.ElementTree as ET
 
-USER_AGENT = "Mozilla/5.0 N1MM_callbook/1.0"
+USER_AGENT = "Mozilla/5.0 N1MM_callbook/1.1"
 
 DEFAULT_PORT = 12060
 DEFAULT_CACHE_DAYS = 30

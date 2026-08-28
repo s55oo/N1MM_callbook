@@ -1,6 +1,6 @@
 # N1MM Callbook – N1MM Logger+ Contest Callbook
 
-> **Version:** 2.6 (HF) / 1.10 (VHF) · Made by **S55OO** with AI assistance.
+> **Version:** 2.7 (HF) / 1.11 (VHF) · Made by **S55OO** with AI assistance.
 > · **Public domain** – see [LICENSE](LICENSE).
 
 A compact always-on-top window that listens to the N1MM Logger+ external
@@ -150,7 +150,8 @@ python n1mm_VHFcallbook.py [--port 12060] [--config n1mm_VHFcallbook.cfg]
   cache file forces a full refresh.
 - If the lookup fails the main area shows `lookup failed`; if a callsign
   has no entry it shows `no data`.
-- The small **help icon** (top-right) opens QRZCQ.com in your browser.
+- The small **help icon** (top-right) opens the project page
+  (`https://github.com/s55oo/N1MM_callbook/`) in your browser.
 
 ---
 
@@ -233,6 +234,9 @@ dist\                – PyInstaller output
 
 ## 7. Changelog
 
+- **2.7 (HF) / 1.11 (VHF)** – the **?** icon now opens the project page on
+  GitHub instead of QRZCQ.com; released into the **public domain** (The
+  Unlicense).
 - **2.6 (HF) / 1.10 (VHF)** – the cache now carries a schema version, so
   entries written by an older build are always re-fetched once after an
   upgrade (the 2.5 fix missed calls that a 2.4 build had already cached).

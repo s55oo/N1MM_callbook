@@ -22,13 +22,13 @@ fetches for the same callsign and to stay polite to the server.
 
 Made by S55OO with AI assistance.
 
-Version: 2.6
+Version: 2.7
 
 Usage:
     python n1mm_callbook.py [--port 12060] [--config callbook.cfg]
 """
 
-__version__ = "2.6"
+__version__ = "2.7"
 
 import argparse
 import base64
@@ -45,7 +45,7 @@ import urllib.request
 import urllib.parse
 import xml.etree.ElementTree as ET
 
-USER_AGENT = "Mozilla/5.0 N1MM_callbook/2.6"
+USER_AGENT = "Mozilla/5.0 N1MM_callbook/2.7"
 HAMQTH_UA = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
     "(KHTML, like Gecko) Chrome/126.0 Safari/537.36"
@@ -53,7 +53,7 @@ HAMQTH_UA = (
 
 DEFAULT_PORT = 12060
 DEFAULT_CACHE_DAYS = 30
-HELP_URL = ""
+HELP_URL = "https://github.com/s55oo/N1MM_callbook/"
 HELP_ICON_B64 = (
     "iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAABFElEQVR4nK2TMYqFMBCGJ49X2HoArQTBTqxsbCysBSutLbyBR4gH8AQBW0/gARQUC/EGVlZ2WmVByBJiIizswBTO+P35J0wQSKIsSyqrY4yRWEMyuGkaGQ9pmj5EkHiqCuZFeDcfvsngIAig6zpY1xUIIWAYxuOfh23TNO90XZcex0HzPKeO41BCCJ2m6bfPkjlG4sxxHEOSJJBl2f2t6zrM8wy2bcN5no9xvqKbtm3vZOF5HmzbBtd1Se/k+3Zhvu9DVVVQFAVQSv8moGka1HV9w8MwKA/5qBqWZcG+79D3/ZtJUAosywJRFL3CtwDGGLHl4CMMQxjHUQmyrUSs8LbCKvgxgsyJDObj/x6TKCKry57zD5uWhA5j8tjMAAAAAElFTkSuQmCC"
 )
@@ -566,10 +566,11 @@ class CallbookApp:
         self.canvas.coords(self.main_id, event.width / 2.0, event.height / 2.0)
 
     def _open_help(self):
+        # The "?" icon opens the project page in the default browser.
         try:
             import webbrowser
 
-            webbrowser.open("https://www.qrzcq.com")
+            webbrowser.open(HELP_URL)
         except Exception:
             pass
 

@@ -17,13 +17,13 @@ to the servers.
 
 Made by S55OO with AI assistance.
 
-Version: 1.10
+Version: 1.11
 
 Usage:
     python n1mm_VHFcallbook.py [--port 12060] [--config n1mm_VHFcallbook.cfg]
 """
 
-__version__ = "1.10"
+__version__ = "1.11"
 
 import argparse
 import os

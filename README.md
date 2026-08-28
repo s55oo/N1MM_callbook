@@ -1,11 +1,11 @@
 # N1MM Callbook – N1MM Logger+ Contest Callbook
 
-> **Version:** 1.2 · Made by **S55OO** with AI assistance.
+> **Version:** 1.3 · Made by **S55OO** with AI assistance.
 
 A compact always-on-top window that listens to the N1MM Logger+ external
 UDP broadcast (XML, port **12060**) and automatically looks up the callsign
 you are working via **[QRZCQ.com](https://www.qrzcq.com)**. The window
-shows the worked station's **name** and **US state** in the main area, and
+shows the worked station's **name – US state** in the main area, and
 the **callsign** in the footer.
 
 QRZCQ.com is a free public callbook that needs **no account and no API key** –
@@ -65,8 +65,12 @@ python n1mm_callbook.py [--port 12060] [--config callbook.cfg]
 - When a `LookupInfo` (type a call + press Space) or `ContactInfo` (QSO
   logged) packet arrives, the window shows the worked callsign in the
   footer and looks up the operator on QRZCQ.com.
-- The main area shows the operator's **name** and, for US stations, the
-  **2-letter state** (blank for non-US calls).
+- The main area shows the operator's **name – US state** (state blank for
+  non-US calls; the font shrinks automatically for long names).
+- **Local computer only:** the app only reacts to packets sent from *this*
+  PC (identified by its local interface IPs). Broadcasts from other
+  stations on the network are ignored, so only the local operator's
+  callsign triggers a lookup.
 - Lookups are cached locally in `callbook_cache.json` to avoid repeated
   network fetches for the same callsign and to stay polite to the server.
 - Cache freshness is controlled by `cache_days` in `callbook.cfg`

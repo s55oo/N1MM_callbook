@@ -14,13 +14,13 @@ fetches for the same callsign and to stay polite to the server.
 
 Made by S55OO with AI assistance.
 
-Version: 1.2
+Version: 1.3
 
 Usage:
     python n1mm_callbook.py [--port 12060] [--config callbook.cfg]
 """
 
-__version__ = "1.2"
+__version__ = "1.3"
 
 import argparse
 import base64
@@ -36,7 +36,7 @@ import urllib.request
 import urllib.parse
 import xml.etree.ElementTree as ET
 
-USER_AGENT = "Mozilla/5.0 N1MM_callbook/1.2"
+USER_AGENT = "Mozilla/5.0 N1MM_callbook/1.3"
 
 DEFAULT_PORT = 12060
 DEFAULT_CACHE_DAYS = 30
@@ -48,8 +48,8 @@ COLOR_IDLE = "#3a3a3a"
 COLOR_ACTIVE = "#1f6feb"
 
 FONT_SIZE_NAME = 18
-FONT_SIZE_STATE = 13
 FONT_SIZE_FOOTER = 10
+FONT_SIZES = [(14, 18), (24, 15), (34, 13), (9999, 11)]
 
 
 def packet_callsign(data):
@@ -135,12 +135,12 @@ def listener_loop(bind_ip, port, on_packet, stop):
             return
     while not stop.is_set():
         try:
-            data, _addr = sock.recvfrom(65535)
+            data, addr = sock.recvfrom(65535)
         except socket.timeout:
             continue
         except OSError:
             break
-        on_packet(data)
+        on_packet(addr[0], data)
     try:
         sock.close()
     except OSError:
@@ -248,6 +248,8 @@ class CallbookApp:
         self.current = None
         self._fetching = False
         self._debounce = None
+        self.local = set(local_interfaces())
+        self.local.add("127.0.0.1")
         self._build()
         self.stop = threading.Event()
         self.thread = threading.Thread(
@@ -279,17 +281,14 @@ class CallbookApp:
         self.canvas = tk.Canvas(
             frame,
             width=330,
-            height=70,
+            height=64,
             bg=COLOR_IDLE,
             highlightthickness=1,
             highlightbackground="#888888",
         )
         self.canvas.pack(fill=tk.X)
-        self.name_id = self.canvas.create_text(
-            165, 28, text="—", font=("Segoe UI", FONT_SIZE_NAME, "bold"), fill="white"
-        )
-        self.state_id = self.canvas.create_text(
-            165, 52, text="", font=("Segoe UI", FONT_SIZE_STATE, "bold"), fill="white"
+        self.main_id = self.canvas.create_text(
+            165, 32, text="—", font=("Segoe UI", FONT_SIZE_NAME, "bold"), fill="white"
         )
         self.canvas.bind("<Configure>", self._recenter_text)
 
@@ -299,8 +298,7 @@ class CallbookApp:
         self.call_label.pack(fill=tk.X)
 
     def _recenter_text(self, event):
-        self.canvas.coords(self.name_id, event.width / 2.0, 28)
-        self.canvas.coords(self.state_id, event.width / 2.0, 52)
+        self.canvas.coords(self.main_id, event.width / 2.0, event.height / 2.0)
 
     def _open_help(self):
         try:
@@ -310,7 +308,11 @@ class CallbookApp:
         except Exception:
             pass
 
-    def on_packet(self, data):
+    def on_packet(self, src, data):
+        # Only look up callsigns from the local computer (this PC), ignoring
+        # broadcasts from other stations on the network.
+        if src not in self.local:
+            return
         call = packet_callsign(data)
         if not call:
             return
@@ -345,8 +347,7 @@ class CallbookApp:
         else:
             # cleared visually while waiting for the debounce / lookup
             self.canvas.configure(bg=COLOR_ACTIVE)
-            self.canvas.itemconfigure(self.name_id, text="…")
-            self.canvas.itemconfigure(self.state_id, text="")
+            self.canvas.itemconfigure(self.main_id, text="…")
 
     def _fetch_async(self, call):
         if self._fetching:
@@ -372,31 +373,35 @@ class CallbookApp:
                 self._set_info(call, info, cached=False, status=status)
         self.root.after(500, self._flush_pending)
 
+    def _line(self, info):
+        name = (info.get("name") or "").strip()
+        name = name.split()[0] if name else ""
+        state = (info.get("state") or "").strip()
+        if name and state:
+            return "{} - {}".format(name, state)
+        return name or state
+
+    def _font_for(self, length):
+        for limit, size in FONT_SIZES:
+            if length <= limit:
+                return ("Segoe UI", size, "bold")
+        return ("Segoe UI", 11, "bold")
+
     def _set_info(self, call, info, cached=False, status="", searching=False):
-        name = ""
-        state = ""
-        if info:
-            name = (info.get("name") or "").strip()
-            state = (info.get("state") or "").strip()
-            if not state:
-                # fall back to country for non-US/pre-1998 stations
-                state = ""
         if searching:
             self.canvas.configure(bg=COLOR_ACTIVE)
-            self.canvas.itemconfigure(self.name_id, text="…")
-            self.canvas.itemconfigure(self.state_id, text="")
-        elif info is not None and name:
+            self.canvas.itemconfigure(self.main_id, text="…")
+        elif info is not None and (info.get("name") or info.get("state")):
             self.canvas.configure(bg=COLOR_ACTIVE)
-            self.canvas.itemconfigure(self.name_id, text=name)
-            self.canvas.itemconfigure(self.state_id, text=state)
+            text = self._line(info)
+            self.canvas.itemconfigure(self.main_id, text=text)
+            self.canvas.itemconfigure(self.main_id, font=self._font_for(len(text)))
         elif status == "api error":
             self.canvas.configure(bg=COLOR_IDLE)
-            self.canvas.itemconfigure(self.name_id, text="lookup failed")
-            self.canvas.itemconfigure(self.state_id, text="")
+            self.canvas.itemconfigure(self.main_id, text="lookup failed")
         else:
             self.canvas.configure(bg=COLOR_IDLE)
-            self.canvas.itemconfigure(self.name_id, text="no data")
-            self.canvas.itemconfigure(self.state_id, text="")
+            self.canvas.itemconfigure(self.main_id, text="no data")
 
     def on_close(self):
         self.stop.set()

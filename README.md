@@ -234,6 +234,9 @@ Callbook.bat         – source launcher (no console)
 manifest.xml         – PyInstaller manifest (common controls)
 n1mm_callbook.spec, n1mm_VHFcallbook.spec – PyInstaller build settings
 dist\                – PyInstaller output
+CLAUDE.md            – developer notes (architecture, gotchas, release steps)
+dev\test_render.py   – headless display-logic tests (no network)
+dev\bench_latency.py – lookup-latency benchmark
 ```
 
 > QRZ.com XML needs a **paid subscription** for full records. Even without

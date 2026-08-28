@@ -21,13 +21,13 @@ fetches for the same callsign and to stay polite to the server.
 
 Made by S55OO with AI assistance.
 
-Version: 2.5
+Version: 2.6
 
 Usage:
     python n1mm_callbook.py [--port 12060] [--config callbook.cfg]
 """
 
-__version__ = "2.5"
+__version__ = "2.6"
 
 import argparse
 import base64
@@ -44,7 +44,7 @@ import urllib.request
 import urllib.parse
 import xml.etree.ElementTree as ET
 
-USER_AGENT = "Mozilla/5.0 N1MM_callbook/2.5"
+USER_AGENT = "Mozilla/5.0 N1MM_callbook/2.6"
 HAMQTH_UA = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
     "(KHTML, like Gecko) Chrome/126.0 Safari/537.36"
@@ -169,6 +169,14 @@ def listener_loop(bind_ip, port, on_packet, stop):
         pass
 
 
+# Bump whenever the per-source result shape changes (new field, different
+# normalisation, ...) so stale entries from an older build are re-fetched
+# once instead of being shown forever.
+#   1  original per-source dicts
+#   2  + 'cqzone' field, locators upper-cased
+CACHE_SCHEMA = 2
+
+
 class Cache:
     """Very small persistent JSON cache for callbook lookups."""
 
@@ -191,20 +199,17 @@ class Cache:
             return None
         if (time.time() - entry.get("ts", 0)) > self.days * 86400:
             return None
-        sources = entry.get("sources")
-        # Old-format entries stored a single merged 'info' dict; treat them
-        # as stale so the next lookup re-fetches per-source results.
-        if not isinstance(sources, list) or not sources:
+        # Entries from an older result shape (missing fields, different
+        # normalisation) are dropped so the next lookup re-fetches them.
+        if entry.get("v") != CACHE_SCHEMA:
             return None
-        # Entries cached before a field was added (e.g. 'cqzone') lack that
-        # key - refetch once so the new column fills in instead of showing
-        # the old value forever.
-        if any(not isinstance(s, dict) or "cqzone" not in s for s in sources):
+        sources = entry.get("sources")
+        if not isinstance(sources, list) or not sources:
             return None
         return sources
 
     def put(self, call, sources):
-        self._data[call] = {"ts": time.time(), "sources": sources}
+        self._data[call] = {"ts": time.time(), "v": CACHE_SCHEMA, "sources": sources}
         self._save()
 
     def _save(self):
@@ -659,7 +664,12 @@ class CallbookApp:
     def _source_field(self, info, key):
         if not info:
             return ""
-        return (info.get(key) or "").strip()
+        v = (info.get(key) or "").strip()
+        # Upper-case the locator on read too, so a stale cache entry from
+        # an older build still displays consistently with the others.
+        if key == "grid":
+            v = v.upper()
+        return v
 
     _US_NAMES = ("united states", "usa", "united states of america", "us")
 

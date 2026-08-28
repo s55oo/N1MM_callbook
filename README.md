@@ -143,10 +143,10 @@ python n1mm_VHFcallbook.py [--port 12060] [--config n1mm_VHFcallbook.cfg]
   `n1mm_VHFcallbook_cache.json` for VHF) to avoid repeated
   network fetches for the same callsign and to stay polite to the server.
 - Cache freshness is controlled by `cache_days` in `callbook.cfg`
-  (default 30 days). Entries saved by an older version that lacks a newer
-  column (e.g. the CQ zone added in 2.4) are re-fetched automatically the
-  next time that call comes up; deleting the cache file forces a full
-  refresh.
+  (default 30 days). The cache also carries a schema version: after an
+  upgrade that changes the stored result shape, older entries are
+  re-fetched automatically the next time that call comes up. Deleting the
+  cache file forces a full refresh.
 - If the lookup fails the main area shows `lookup failed`; if a callsign
   has no entry it shows `no data`.
 - The small **help icon** (top-right) opens QRZCQ.com in your browser.
@@ -232,6 +232,11 @@ dist\                – PyInstaller output
 
 ## 7. Changelog
 
+- **2.6 (HF) / 1.10 (VHF)** – the cache now carries a schema version, so
+  entries written by an older build are always re-fetched once after an
+  upgrade (the 2.5 fix missed calls that a 2.4 build had already cached).
+  Locators are also upper-cased on read, so even a stale entry displays
+  consistently.
 - **2.5 (HF) / 1.9 (VHF)** – VHF: locators are upper-cased on the way in
   (some sources return the sub-square lower case, e.g. `JN46la` vs
   `JN46LA`), so a pure case difference no longer looks like a source

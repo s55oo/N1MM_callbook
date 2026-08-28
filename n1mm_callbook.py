@@ -52,10 +52,14 @@ FONT_SIZE_INFO = 10
 
 
 def packet_callsign(data):
-    """Extract the callsign from an N1MM RadioInfo/ContactInfo packet.
+    """Extract the worked station's callsign from an N1MM broadcast packet.
 
-    Returns the callsign string, or None if the packet is not recognised
-    or carries no callsign.
+    N1MM broadcasts a PossibleCall packet (field "Call") as you type a
+    callsign into the entry window, and a ContactInfo packet (field
+    "Callsign") when a contact is logged. We use those, and fall back to a
+    generic "CallSign"/"Callsign" field on any other packet.
+
+    Returns the callsign string, or None if the packet carries none.
     """
     raw = data.decode("utf-8", errors="replace")
     start = raw.find("<")
@@ -65,14 +69,20 @@ def packet_callsign(data):
         root = ET.fromstring(raw[start:])
     except ET.ParseError:
         return None
-    if root.tag != "RadioInfo":
+    tag = root.tag
+    if tag not in ("PossibleCall", "ContactInfo", "RadioInfo"):
         return None
     callsign = ""
     for el in root.iter():
-        if el.tag in ("CallSign", "Callsign") and el.text and el.text.strip():
-            callsign = el.text.strip().upper()
+        name = el.tag
+        if name == "Call":
+            if el.text and el.text.strip():
+                callsign = el.text.strip()
             break
-    return callsign or None
+        if name in ("CallSign", "Callsign") and el.text and el.text.strip():
+            callsign = el.text.strip()
+            break
+    return callsign.upper() or None
 
 
 def normalize_call(call):
@@ -230,6 +240,7 @@ class CallbookApp:
         self.cache = Cache(cache_path, cache_days)
         self.current = None
         self._fetching = False
+        self._debounce = None
         self._build()
         self.stop = threading.Event()
         self.thread = threading.Thread(
@@ -295,16 +306,35 @@ class CallbookApp:
         call = normalize_call(call)
         if not call or call.lower().startswith("test"):
             return
-        if self.current == call:
-            return
-        self.current = call
-        self._display_cached(call)
-        self._fetch_async(call)
+        # Show the callsign immediately (it may change as the user types),
+        # but debounce the network lookup until it has been stable a moment.
+        if self.current != call:
+            self.current = call
+            self._show_call(call)
+        if self._debounce is not None:
+            self.root.after_cancel(self._debounce)
+        self._debounce = self.root.after(1200, self._on_stable, call)
 
-    def _display_cached(self, call):
+    def _on_stable(self, call):
+        self._debounce = None
+        if call != self.current:
+            return
         info = self.cache.get(call)
+        if info is not None:
+            self._set_info(call, info, cached=True)
+        else:
+            self._set_info(call, None, searching=True)
+            self._fetch_async(call)
+
+    def _show_call(self, call):
         self.canvas.itemconfigure(self.call_id, text=call)
-        self._set_info(call, info, cached=bool(info))
+        info = self.cache.get(call)
+        if info is not None:
+            self._set_info(call, info, cached=True)
+        else:
+            # cleared visually while waiting for the debounce / lookup
+            self.canvas.configure(bg=COLOR_ACTIVE)
+            self.info.configure(text="…")
 
     def _fetch_async(self, call):
         if self._fetching:
@@ -313,10 +343,6 @@ class CallbookApp:
         threading.Thread(target=self._do_fetch, args=(call,), daemon=True).start()
 
     def _do_fetch(self, call):
-        info = self.cache.get(call)
-        if info is not None:
-            self._fetching = False
-            return
         info = qrzcq_lookup(call)
         status = "api error"
         if info is not None:
@@ -334,7 +360,7 @@ class CallbookApp:
                 self._set_info(call, info, cached=False, status=status)
         self.root.after(500, self._flush_pending)
 
-    def _set_info(self, call, info, cached=False, status=""):
+    def _set_info(self, call, info, cached=False, status="", searching=False):
         lines = []
         if info:
             if info.get("name"):
@@ -349,6 +375,8 @@ class CallbookApp:
                 lines.append("(cached)")
         elif status == "api error":
             lines.append("lookup failed – no data")
+        elif searching:
+            lines.append("looking up …")
         else:
             lines.append("no data")
         self.canvas.configure(bg=COLOR_ACTIVE)

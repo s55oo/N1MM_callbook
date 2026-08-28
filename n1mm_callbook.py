@@ -1,0 +1,411 @@
+"""N1MM Logger+ Contest Callbook lookup.
+
+A compact always-on-top window that listens to the N1MM Logger+ external
+UDP broadcast (XML, port 12060) and automatically looks up the callsign
+currently in the radio/RX1 via QRZCQ.com. The operator name, QTH and
+grid square are shown under the callsign.
+
+QRZCQ.com is a public, free callbook that needs no account or API key -
+each callsign has a page at https://www.qrzcq.com/call/<CALL> whose
+lookup info is parsed from the HTML.
+
+Lookups are cached locally in a JSON file to avoid repeated network
+fetches for the same callsign and to stay polite to the server.
+
+Made by S55OO with AI assistance.
+
+Version: 1.0
+
+Usage:
+    python n1mm_callbook.py [--port 12060] [--config callbook.cfg]
+"""
+
+__version__ = "1.0"
+
+import argparse
+import base64
+import json
+import os
+import re
+import socket
+import sys
+import threading
+import time
+import tkinter as tk
+import urllib.request
+import urllib.parse
+import xml.etree.ElementTree as ET
+
+USER_AGENT = "Mozilla/5.0 N1MM_callbook/1.0"
+
+DEFAULT_PORT = 12060
+DEFAULT_CACHE_DAYS = 30
+HELP_URL = ""
+HELP_ICON_B64 = (
+    "iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAABFElEQVR4nK2TMYqFMBCGJ49X2HoArQTBTqxsbCysBSutLbyBR4gH8AQBW0/gARQUC/EGVlZ2WmVByBJiIizswBTO+P35J0wQSKIsSyqrY4yRWEMyuGkaGQ9pmj5EkHiqCuZFeDcfvsngIAig6zpY1xUIIWAYxuOfh23TNO90XZcex0HzPKeO41BCCJ2m6bfPkjlG4sxxHEOSJJBl2f2t6zrM8wy2bcN5no9xvqKbtm3vZOF5HmzbBtd1Se/k+3Zhvu9DVVVQFAVQSv8moGka1HV9w8MwKA/5qBqWZcG+79D3/ZtJUAosywJRFL3CtwDGGLHl4CMMQxjHUQmyrUSs8LbCKvgxgsyJDObj/x6TKCKry57zD5uWhA5j8tjMAAAAAElFTkSuQmCC"
+)
+COLOR_IDLE = "#3a3a3a"
+COLOR_ACTIVE = "#1f6feb"
+
+FONT_SIZE_CALL = 20
+FONT_SIZE_INFO = 10
+
+
+def packet_callsign(data):
+    """Extract the callsign from an N1MM RadioInfo/ContactInfo packet.
+
+    Returns the callsign string, or None if the packet is not recognised
+    or carries no callsign.
+    """
+    raw = data.decode("utf-8", errors="replace")
+    start = raw.find("<")
+    if start < 0:
+        return None
+    try:
+        root = ET.fromstring(raw[start:])
+    except ET.ParseError:
+        return None
+    if root.tag != "RadioInfo":
+        return None
+    callsign = ""
+    for el in root.iter():
+        if el.tag in ("CallSign", "Callsign") and el.text and el.text.strip():
+            callsign = el.text.strip().upper()
+            break
+    return callsign or None
+
+
+def normalize_call(call):
+    if not call:
+        return ""
+    return "".join(ch for ch in call.upper() if ch.isalnum() or ch in "/.:")
+
+
+def local_interfaces():
+    ips = []
+    try:
+        ips.extend(socket.gethostbyname_ex(socket.gethostname())[2])
+    except OSError:
+        pass
+    try:
+        for info in socket.getaddrinfo(socket.gethostname(), None, socket.AF_INET):
+            if info[4][0] not in ips:
+                ips.append(info[4][0])
+    except OSError:
+        pass
+    return [ip for ip in ips if not ip.startswith("127.")]
+
+
+def open_socket(bind_ip, port):
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+    sock.bind((bind_ip, port))
+    sock.settimeout(0.3)
+    return sock
+
+
+def listener_loop(bind_ip, port, on_packet, stop):
+    try:
+        sock = open_socket(bind_ip, port)
+    except OSError:
+        for ip in local_interfaces():
+            try:
+                sock = open_socket(ip, port)
+                break
+            except OSError:
+                continue
+        else:
+            return
+    while not stop.is_set():
+        try:
+            data, _addr = sock.recvfrom(65535)
+        except socket.timeout:
+            continue
+        except OSError:
+            break
+        on_packet(data)
+    try:
+        sock.close()
+    except OSError:
+        pass
+
+
+class Cache:
+    """Very small persistent JSON cache for HamQTH lookups."""
+
+    def __init__(self, path, days):
+        self.path = path
+        self.days = days
+        self._data = {}
+        self._load()
+
+    def _load(self):
+        try:
+            with open(self.path, encoding="utf-8") as fh:
+                self._data = json.load(fh)
+        except (OSError, ValueError):
+            self._data = {}
+
+    def get(self, call):
+        entry = self._data.get(call)
+        if not entry:
+            return None
+        if (time.time() - entry.get("ts", 0)) > self.days * 86400:
+            return None
+        return entry.get("info")
+
+    def put(self, call, info):
+        self._data[call] = {"ts": time.time(), "info": info}
+        self._save()
+
+    def _save(self):
+        try:
+            tmp = self.path + ".tmp"
+            with open(tmp, "w", encoding="utf-8") as fh:
+                json.dump(self._data, fh, ensure_ascii=False)
+            os.replace(tmp, self.path)
+        except OSError:
+            pass
+
+
+def qrzcq_lookup(call, timeout=15):
+    """Query QRZCQ.com for a callsign by parsing its public page.
+
+    Returns a dict with 'name'/'qth'/'grid'/'class'/'country' (any may be
+    empty), or None on network/parse error.
+    """
+    url = "https://www.qrzcq.com/call/" + urllib.parse.quote(call.upper())
+    try:
+        req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            raw = resp.read().decode("utf-8", errors="replace")
+    except OSError:
+        return None
+
+    name, addr = "", ""
+    m = re.search(r'<p class="haminfoaddress">(.*?)</p>', raw, re.S)
+    if m:
+        block = m.group(1)
+        b = re.search(r"<b[^>]*>([^<]+)</b>(.*)", block, re.S)
+        if b:
+            name = b.group(1).strip()
+            a = b.group(2)
+            a = re.sub(r"<br\s*/?>", " | ", a)
+            a = re.sub(r"<[^>]+>", " ", a)
+            a = re.sub(r"\s+", " ", a).strip(" |")
+            for cut in ("APRS Info", "Call data", "&bull;", "&nbsp;"):
+                idx = a.find(cut)
+                if idx != -1:
+                    a = a[:idx]
+                    break
+            a = re.sub(r"(?:\s*\|\s*)+$", "", a).strip(" |")
+            addr = a
+
+    def grab(label):
+        mm = re.search(
+            r"<b>" + label + r":</b></td><td align=\"left\">([^<]+)</td>", raw
+        )
+        return mm.group(1).strip() if mm else ""
+
+    return {
+        "name": name,
+        "qth": addr,
+        "grid": grab("Locator"),
+        "class": grab("Class"),
+        "country": "",
+    }
+
+
+def app_dir():
+    if getattr(sys, "frozen", False):
+        return os.path.dirname(sys.executable)
+    return os.path.dirname(os.path.abspath(__file__))
+
+
+class CallbookApp:
+    def __init__(self, root, cache_path, port, cache_days):
+        self.root = root
+        self.port = port
+        self.cache = Cache(cache_path, cache_days)
+        self.current = None
+        self._fetching = False
+        self._build()
+        self.stop = threading.Event()
+        self.thread = threading.Thread(
+            target=listener_loop,
+            args=("0.0.0.0", port, self.on_packet, self.stop),
+            daemon=True,
+        )
+        self.thread.start()
+        self.root.protocol("WM_DELETE_WINDOW", self.on_close)
+        self.root.after(500, self._flush_pending)
+
+    def _build(self):
+        self.root.title("N1MM Callbook  -  UDP {}  v{}".format(self.port, __version__))
+        self.root.attributes("-topmost", True)
+        frame = tk.Frame(self.root, padx=6, pady=4)
+        frame.pack()
+        top = tk.Frame(frame)
+        top.pack(fill=tk.X)
+        tk.Label(
+            top, text="N1MM Callbook", font=("Segoe UI", 8, "bold")
+        ).pack(side=tk.LEFT)
+        self.help_icon = tk.PhotoImage(
+            data=base64.b64decode(HELP_ICON_B64.encode("ascii"))
+        )
+        self.help_link = tk.Label(top, image=self.help_icon, cursor="hand2")
+        self.help_link.pack(side=tk.RIGHT)
+        self.help_link.bind("<Button-1>", lambda e: self._open_help())
+
+        self.canvas = tk.Canvas(
+            frame,
+            width=330,
+            height=64,
+            bg=COLOR_IDLE,
+            highlightthickness=1,
+            highlightbackground="#888888",
+        )
+        self.canvas.pack(fill=tk.X)
+        self.call_id = self.canvas.create_text(
+            165, 32, text="—", font=("Segoe UI", FONT_SIZE_CALL, "bold"), fill="white"
+        )
+        self.canvas.bind("<Configure>", self._recenter_text)
+
+        self.info = tk.Label(
+            frame, text="", font=("Segoe UI", FONT_SIZE_INFO), justify=tk.CENTER
+        )
+        self.info.pack(fill=tk.X)
+
+    def _recenter_text(self, event):
+        self.canvas.coords(self.call_id, event.width / 2.0, event.height / 2.0)
+
+    def _open_help(self):
+        try:
+            import webbrowser
+
+            webbrowser.open("https://www.qrzcq.com")
+        except Exception:
+            pass
+
+    def on_packet(self, data):
+        call = packet_callsign(data)
+        if not call:
+            return
+        call = normalize_call(call)
+        if not call or call.lower().startswith("test"):
+            return
+        if self.current == call:
+            return
+        self.current = call
+        self._display_cached(call)
+        self._fetch_async(call)
+
+    def _display_cached(self, call):
+        info = self.cache.get(call)
+        self.canvas.itemconfigure(self.call_id, text=call)
+        self._set_info(call, info, cached=bool(info))
+
+    def _fetch_async(self, call):
+        if self._fetching:
+            return
+        self._fetching = True
+        threading.Thread(target=self._do_fetch, args=(call,), daemon=True).start()
+
+    def _do_fetch(self, call):
+        info = self.cache.get(call)
+        if info is not None:
+            self._fetching = False
+            return
+        info = qrzcq_lookup(call)
+        status = "api error"
+        if info is not None:
+            self.cache.put(call, info)
+            status = ""
+        self._fetching = False
+        self._pending = (call, info, status)
+
+    def _flush_pending(self):
+        pending = getattr(self, "_pending", None)
+        if pending:
+            call, info, status = pending
+            self._pending = None
+            if call == self.current:
+                self._set_info(call, info, cached=False, status=status)
+        self.root.after(500, self._flush_pending)
+
+    def _set_info(self, call, info, cached=False, status=""):
+        lines = []
+        if info:
+            if info.get("name"):
+                lines.append("Name: {}".format(info["name"]))
+            if info.get("qth"):
+                lines.append("QTH:  {}".format(info["qth"]))
+            if info.get("grid"):
+                lines.append("Grid: {}".format(info["grid"]))
+            if info.get("country"):
+                lines.append("Country: {}".format(info["country"]))
+            if cached:
+                lines.append("(cached)")
+        elif status == "api error":
+            lines.append("lookup failed – no data")
+        else:
+            lines.append("no data")
+        self.canvas.configure(bg=COLOR_ACTIVE)
+        self.info.configure(text="  \n  ".join(lines) if lines else "")
+
+    def on_close(self):
+        self.stop.set()
+        self.root.destroy()
+
+
+def main():
+    parser = argparse.ArgumentParser(description="N1MM Logger+ contest callbook")
+    parser.add_argument("--port", type=int, default=DEFAULT_PORT)
+    parser.add_argument(
+        "--config",
+        default=os.path.join(app_dir(), "callbook.cfg"),
+        help="config file (same folder as the exe by default)",
+    )
+    args = parser.parse_args()
+
+    settings = {}
+    if os.path.exists(args.config):
+        try:
+            with open(args.config, encoding="utf-8") as fh:
+                for line in fh:
+                    line = line.strip()
+                    if not line or line.startswith(("#", "[")):
+                        continue
+                    if "=" not in line:
+                        continue
+                    key, _, val = [p.strip() for p in line.partition("=")]
+                    settings[key.lower()] = val
+        except OSError:
+            pass
+
+    port = args.port
+    if "udp_port" in settings:
+        try:
+            port = int(settings["udp_port"])
+        except ValueError:
+            pass
+    cache_days = DEFAULT_CACHE_DAYS
+    if "cache_days" in settings:
+        try:
+            cache_days = int(settings["cache_days"])
+        except ValueError:
+            pass
+    cache_file = os.path.join(app_dir(), "callbook_cache.json")
+    if "cache_file" in settings:
+        cache_file = os.path.abspath(
+            os.path.join(os.path.dirname(args.config), settings["cache_file"])
+        )
+
+    root = tk.Tk()
+    CallbookApp(root, cache_file, port, cache_days)
+    root.mainloop()
+
+
+if __name__ == "__main__":
+    main()

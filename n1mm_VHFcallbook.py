@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Unlicense
 """N1MM Logger+ VHF Locator lookup.
 
 A variant of the callbook app that shows the QRA/maidenhead locator

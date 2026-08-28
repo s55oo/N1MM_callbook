@@ -1,6 +1,7 @@
 # N1MM Callbook – N1MM Logger+ Contest Callbook
 
-> **Version:** 2.4 (HF) / 1.8 (VHF) · Made by **S55OO** with AI assistance.
+> **Version:** 2.6 (HF) / 1.10 (VHF) · Made by **S55OO** with AI assistance.
+> · **Public domain** – see [LICENSE](LICENSE).
 
 A compact always-on-top window that listens to the N1MM Logger+ external
 UDP broadcast (XML, port **12060**) and automatically looks up the callsign
@@ -254,3 +255,17 @@ dist\                – PyInstaller output
   returned by QRZ XML in the state field is ignored.
 - **2.2 (HF) / 1.6 (VHF)** – per-source side-by-side display; QRZ.com XML
   added as an optional source.
+
+---
+
+## 8. License
+
+This project is released into the **public domain** under
+[The Unlicense](LICENSE) – do whatever you want with it, no attribution
+required.
+
+The standalone EXEs bundle the Python runtime and Tcl/Tk, which keep
+their own permissive licenses (PSF and BSD-style); PyInstaller's
+bootloader carries an explicit exception that allows shipping the frozen
+app under any license. Nothing in the toolchain restricts this
+dedication.

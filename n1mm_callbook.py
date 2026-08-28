@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Unlicense
 """N1MM Logger+ Contest Callbook lookup.
 
 A compact always-on-top window that listens to the N1MM Logger+ external

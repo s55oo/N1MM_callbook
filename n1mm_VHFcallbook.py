@@ -16,13 +16,13 @@ to the servers.
 
 Made by S55OO with AI assistance.
 
-Version: 1.7
+Version: 1.8
 
 Usage:
     python n1mm_VHFcallbook.py [--port 12060] [--config n1mm_VHFcallbook.cfg]
 """
 
-__version__ = "1.7"
+__version__ = "1.8"
 
 import argparse
 import os
@@ -39,7 +39,8 @@ class VHFApp(cb.CallbookApp):
     APP_TITLE = "N1MM VHF Callbook"
     # Show all three locator values side by side (e.g. "JN76HD JN76HD JN76HD")
     # so a wrong one stands out; each source contributes its own value.
-    FIELD = "grid"
+    # Locator only - no state/CQ zone/name here.
+    SLOT_FIELDS = ("grid",)
     SHOW_NAME = False
     # Slot order: QRZCQ, HamQTH's Grid: row, then the locator computed from
     # the coordinates on the public QRZ.com page. The paid QRZ XML service

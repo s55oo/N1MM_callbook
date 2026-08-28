@@ -3,11 +3,12 @@
 A compact always-on-top window that listens to the N1MM Logger+ external
 UDP broadcast (XML, port 12060) and automatically looks up the callsign
 currently in the radio/RX1. Every source is queried in parallel and ALL
-of its values are shown side by side (e.g. "MA MA MA" for the US state on
-HF, three locators on the VHF variant), each slot filling in as soon as
-that source answers, so disagreements between sources stand out and the
-operator can pick the right one. For non-US (DX) stations the HF window
-shows the operator name and country instead of a US state.
+of its values are shown side by side (e.g. "MA/5 MA/5 MA/5" for the US
+state + CQ zone on HF, three locators on the VHF variant), each slot
+filling in as soon as that source answers, so disagreements between
+sources stand out and the operator can pick the right one. For non-US
+(DX) stations the HF window shows the operator name and country followed
+by the CQ zone from each source.
 
 QRZCQ.com is a public, free callbook that needs no account or API key -
 each callsign has a page at https://www.qrzcq.com/call/<CALL> whose
@@ -20,13 +21,13 @@ fetches for the same callsign and to stay polite to the server.
 
 Made by S55OO with AI assistance.
 
-Version: 2.3
+Version: 2.4
 
 Usage:
     python n1mm_callbook.py [--port 12060] [--config callbook.cfg]
 """
 
-__version__ = "2.3"
+__version__ = "2.4"
 
 import argparse
 import base64
@@ -43,7 +44,7 @@ import urllib.request
 import urllib.parse
 import xml.etree.ElementTree as ET
 
-USER_AGENT = "Mozilla/5.0 N1MM_callbook/2.3"
+USER_AGENT = "Mozilla/5.0 N1MM_callbook/2.4"
 HAMQTH_UA = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
     "(KHTML, like Gecko) Chrome/126.0 Safari/537.36"
@@ -185,6 +186,11 @@ class Cache:
         # as stale so the next lookup re-fetches per-source results.
         if not isinstance(sources, list) or not sources:
             return None
+        # Entries cached before a field was added (e.g. 'cqzone') lack that
+        # key - refetch once so the new column fills in instead of showing
+        # the old value forever.
+        if any(not isinstance(s, dict) or "cqzone" not in s for s in sources):
+            return None
         return sources
 
     def put(self, call, sources):
@@ -204,8 +210,8 @@ class Cache:
 def qrzcq_lookup(call, timeout=15):
     """Query QRZCQ.com for a callsign by parsing its public page.
 
-    Returns a dict with 'name'/'qth'/'grid'/'class'/'country' (any may be
-    empty), or None on network/parse error.
+    Returns a dict with 'name'/'qth'/'grid'/'class'/'state'/'cqzone'/
+    'country' (any may be empty), or None on network/parse error.
     """
     url = "https://www.qrzcq.com/call/" + urllib.parse.quote(call.upper())
     try:
@@ -246,6 +252,7 @@ def qrzcq_lookup(call, timeout=15):
         "grid": grab("Locator"),
         "class": grab("Class"),
         "state": grab("Federal state"),
+        "cqzone": grab("CQ Zone"),
         "country": "",
     }
 
@@ -287,6 +294,7 @@ def hamqth_lookup(call, timeout=15):
         "grid": grab("Grid"),
         "class": grab("Class"),
         "state": grab("US State") or grab("State"),
+        "cqzone": grab("CQ") or grab("CQ zone"),
         "country": grab("Country"),
     }
 
@@ -375,6 +383,7 @@ def qrz_lookup(call, username="", password="", timeout=15):
         "grid": t("grid"),
         "class": t("class"),
         "state": t("state"),
+        "cqzone": t("cqzone"),
         "country": t("country"),
     }
 
@@ -437,6 +446,7 @@ def qrzdb_lookup(call, timeout=15):
         "grid": grid,
         "class": "",
         "state": "",
+        "cqzone": "",
         "country": "",
     }
 
@@ -449,10 +459,12 @@ def app_dir():
 
 class CallbookApp:
     APP_TITLE = "N1MM Callbook"
-    # Field the main area highlights. Each source in the chain contributes
-    # its own value and ALL of them are shown (e.g. "MA MA MA"), so the
-    # operator can see when sources disagree and pick the right one.
-    FIELD = "state"
+    # Fields the main area shows per source, joined with "/" into one token
+    # per slot. Every source contributes its own token and ALL of them are
+    # shown side by side (e.g. "MA/5 MA/5 MA/5"), so the operator sees when
+    # sources disagree and can pick the right value for the exchange. The
+    # HF app shows US state + CQ zone; the VHF variant only the locator.
+    SLOT_FIELDS = ("state", "cqzone")
     # Show the operator name too (printed once, shortest of the sources).
     # The VHF variant only needs the locator, hence False there.
     SHOW_NAME = True
@@ -641,16 +653,35 @@ class CallbookApp:
 
     _US_NAMES = ("united states", "usa", "united states of america", "us")
 
+    def _is_dx(self, sources):
+        # True when at least one source reports a non-US country - used to
+        # switch the HF window from "state" mode to "name + country".
+        for s in sources:
+            c = self._source_field(s, "country").lower()
+            if c and c not in self._US_NAMES:
+                return True
+        return False
+
     def _source_value(self, info):
-        v = self._source_field(info, self.FIELD)
-        # The state column is US-only. When a source reports a non-US
-        # country its "state" is a foreign subdivision (e.g. QRZ XML gives
-        # "HE" for a DL call) - drop it so the DX branch shows the name.
-        if v and self.FIELD == "state":
-            country = self._source_field(info, "country").lower()
-            if country and country not in self._US_NAMES:
-                return ""
-        return v
+        # One slot token, e.g. "MA/5" (state + CQ zone) or just "5" for a
+        # DX station that has no US state. Empty when the source gave none
+        # of the SLOT_FIELDS.
+        if not info:
+            return ""
+        parts = []
+        for key in self.SLOT_FIELDS:
+            v = self._source_field(info, key)
+            # The state column is US-only. When the source reports a non-US
+            # country its "state" is a foreign subdivision (e.g. QRZ XML
+            # gives "HE" for a DL call) - drop it, but keep the CQ zone,
+            # which is meaningful worldwide.
+            if v and key == "state":
+                country = self._source_field(info, "country").lower()
+                if country and country not in self._US_NAMES:
+                    v = ""
+            if v:
+                parts.append(v)
+        return "/".join(parts)
 
     def _best_name(self, sources):
         # The operator name, printed only once; out of the candidates from
@@ -677,10 +708,11 @@ class CallbookApp:
     def _render_slots(self, call, slots, pending):
         # Renders the main area at any stage of the lookup. Each slot maps
         # to one source in chain order; still-fetching slots show "…" so
-        # results appear as they arrive (e.g. "Fred - MA … …" then the
+        # results appear as they arrive (e.g. "Fred - MA/5 … …" then the
         # rest fill in). Example final lines:
-        #   HF (state):  "Dave - MA MA MA"  (QRZ first when configured)
-        #   VHF (grid):  "JN76HD JN76HD JN76HD JN76HD"
+        #   HF, US:  "Dave - MA/5 MA/5 MA/5"    (state / CQ zone per source)
+        #   HF, DX:  "Hans (Germany) - 14 14 14"
+        #   VHF:     "JN76HD JN76HD JN76HD JN76HD"
         finished = [slots[i] for i in range(len(slots)) if i not in pending]
         any_data = any(self._source_value(s) for s in finished if s)
         vals = []
@@ -692,27 +724,28 @@ class CallbookApp:
                 v = self._source_value(s) if s else ""
                 vals.append(v if v else "-")
         all_done = not pending
+        have_name = self.SHOW_NAME and bool(self._best_name(finished))
         if not finished:
             text = "…"
             bg = COLOR_ACTIVE
-        elif any_data:
+        elif any_data or have_name:
             line = " ".join(vals)
+            real = any(v not in ("-", "…") for v in vals)
             if self.SHOW_NAME:
                 name = self._best_name(finished)
-                if name and any(v not in ("-", "…") for v in vals):
-                    text = "{} - {}".format(name, line)
+                prefix = name
+                # DX station: prepend the country, since there is no US
+                # state (the slots then carry just the CQ zone).
+                if self._is_dx(finished):
+                    country = self._best_country(finished)
+                    if country:
+                        prefix = "{} ({})".format(name, country) if name else country
+                if prefix and real:
+                    text = "{} - {}".format(prefix, line)
                 else:
-                    text = name if name else line
+                    text = prefix or line
             else:
                 text = line
-            bg = COLOR_ACTIVE
-        elif self.SHOW_NAME and self._best_name(finished):
-            # DX station: no US state from any source, but we do have an
-            # operator name - show it (with country when a source gives
-            # one) instead of "no data".
-            name = self._best_name(finished)
-            country = self._best_country(finished)
-            text = "{} - {}".format(name, country) if country else name
             bg = COLOR_ACTIVE
         elif not all_done:
             text = "…"

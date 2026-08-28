@@ -1,6 +1,6 @@
 # N1MM Callbook – N1MM Logger+ Contest Callbook
 
-> **Version:** 2.3 (HF) / 1.7 (VHF) · Made by **S55OO** with AI assistance.
+> **Version:** 2.4 (HF) / 1.8 (VHF) · Made by **S55OO** with AI assistance.
 
 A compact always-on-top window that listens to the N1MM Logger+ external
 UDP broadcast (XML, port **12060**) and automatically looks up the callsign
@@ -8,14 +8,15 @@ you are working. Every source is queried **in parallel** and **all** of its
 values are shown side by side – each slot filling in the moment that
 source answers, so nothing waits for the slowest one – and when the
 sources disagree the wrong one stands out and you can pick the right one.
-The window shows the worked station's **name – US state** in the main area
-(e.g. `Fred - MA MA MA`, name printed once as the shortest of the sources)
-and the **callsign** in the footer. For a **non-US (DX) station**, where
-there is no US state, the HF window shows the **operator name and country**
-instead (e.g. `Hans - Germany`).
+The window shows the worked station's **name**, then each source's
+**US state and CQ zone** as one `state/zone` token, and the **callsign**
+in the footer – e.g. `Fred - MA/5 MA/5 MA/5` (name printed once as the
+shortest of the sources). For a **non-US (DX) station**, where there is no
+US state, the HF window shows the **operator name and country** followed
+by each source's **CQ zone**, e.g. `Hans (Germany) - 14 14 14`.
 
-The HF callbook pulls its state from up to **three sources**:
-**[QRZ.com XML](https://www.qrz.com/page/xml_data.html),
+The HF callbook pulls its **state, CQ zone** and name from up to **three
+sources**: **[QRZ.com XML](https://www.qrz.com/page/xml_data.html),
 [QRZCQ.com](https://www.qrzcq.com) and
 [HamQTH.com](https://www.hamqth.com)**. They are queried at the same time;
 the slots are shown left-to-right in that order (QRZ XML left-most when
@@ -112,24 +113,26 @@ python n1mm_VHFcallbook.py [--port 12060] [--config n1mm_VHFcallbook.cfg]
   footer **immediately** and starts the lookup. **All sources are queried
   in parallel** and **each slot's value is shown the moment that source
   answers** – `…` marks a slot still running. A slow source never holds up
-  a fast one: you might see `FRED - … MA …` first, then the rest fill in to
-  `FRED - MA MA MA`.
+  a fast one: you might see `FRED - MA/5 … …` first, then the rest fill in
+  to `FRED - MA/5 MA/5 MA/5`.
 - The slots are laid out left-to-right in a fixed order –
   **QRZ.com XML, QRZCQ.com, HamQTH.com** (QRZ XML only when credentials are
   configured; the **VHF variant** adds **QRZ.com public page** as a fourth
   slot). The order is just the column layout, not a priority – every source
   is fetched at the same time. When the values differ (e.g.
-  `JN95EQ - JN95FQ …`) you see it immediately and can decide which one is
+  `MA/5 MA/4 MA/5`) you see it immediately and can decide which one is
   right for the exchange.
 - For a **US station** the main area shows the **shortest operator name**
-  (printed once) followed by the **US state** once per source, e.g.
-  `FRED - MA MA MA` (a dash `-` marks a source that returned no state; the
-  font shrinks automatically for long text).
+  (printed once) followed by one **`state/zone`** token per source, e.g.
+  `FRED - MA/5 MA/5 MA/5`. A slot shows just the state when that source has
+  no CQ zone (`MA`), just the zone for a DX-style entry, or `-` when it
+  returned neither. The font shrinks automatically for long text.
 - For a **non-US (DX) station** there is no US state, so the HF window
-  shows the **operator name and country** instead, e.g. `Hans - Germany`
-  (or just the name when no source reports a country). A foreign
-  subdivision that QRZ XML sometimes returns in the state field (e.g. `HE`
-  for a German call) is ignored so the name/country line is shown.
+  shows the **operator name and country** followed by each source's **CQ
+  zone**, e.g. `Hans (Germany) - 14 14 14` (or just `Hans (Germany)` when
+  no source reports a zone). A foreign subdivision that QRZ XML sometimes
+  returns in the state field (e.g. `HE` for a German call) is ignored; the
+  CQ zone, which is meaningful worldwide, is kept.
 - The **VHF variant** shows the **QRA/maidenhead locator** the same
   side-by-side way and has no name/DX handling – it only needs the grid.
 - **Local computer only:** the app only reacts to packets sent from *this*
@@ -140,7 +143,10 @@ python n1mm_VHFcallbook.py [--port 12060] [--config n1mm_VHFcallbook.cfg]
   `n1mm_VHFcallbook_cache.json` for VHF) to avoid repeated
   network fetches for the same callsign and to stay polite to the server.
 - Cache freshness is controlled by `cache_days` in `callbook.cfg`
-  (default 30 days).
+  (default 30 days). Entries saved by an older version that lacks a newer
+  column (e.g. the CQ zone added in 2.4) are re-fetched automatically the
+  next time that call comes up; deleting the cache file forces a full
+  refresh.
 - If the lookup fails the main area shows `lookup failed`; if a callsign
   has no entry it shows `no data`.
 - The small **help icon** (top-right) opens QRZCQ.com in your browser.
@@ -226,6 +232,12 @@ dist\                – PyInstaller output
 
 ## 7. Changelog
 
+- **2.4 (HF) / 1.8 (VHF)** – HF now also looks up the **CQ zone** from
+  every source and shows it next to the state as a `state/zone` token
+  (e.g. `MA/5`); DX stations show the CQ zone after the country. Cache
+  entries from an earlier version (no CQ zone stored) are refreshed
+  automatically on next use. VHF display unchanged (shared engine update
+  only).
 - **2.3 (HF) / 1.7 (VHF)** – all sources are now queried **in parallel**;
   each slot fills as soon as that source answers instead of waiting for
   the whole chain. HF: **non-US (DX) stations** now show the operator

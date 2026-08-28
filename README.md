@@ -1,6 +1,6 @@
 # N1MM Callbook – N1MM Logger+ Contest Callbook
 
-> **Version:** 2.8 (HF) / 1.12 (VHF) · Made by **S55OO** with AI assistance.
+> **Version:** 2.9 (HF) / 1.13 (VHF) · Made by **S55OO** with AI assistance.
 > · **Public domain** – see [LICENSE](LICENSE).
 
 A compact always-on-top window that listens to the N1MM Logger+ external
@@ -150,6 +150,13 @@ python n1mm_VHFcallbook.py [--port 12060] [--config n1mm_VHFcallbook.cfg]
   cache file forces a full refresh.
 - If the lookup fails the main area shows `lookup failed`; if a callsign
   has no entry it shows `no data`.
+- **Fast lookups:** the connection to each source is kept alive and
+  re-used between QSOs, and responses are gzip-compressed, so the ~90 ms
+  TLS handshake isn't paid every time. In testing this cut the time to
+  fill all three HF slots from ~385 ms to ~155 ms (median).
+- The **window remembers where you put it** (`*_window.json`, next to the
+  cache), and the QRZ XML session key is kept across restarts
+  (`qrz_session.json`), skipping the ~0.6 s re-login on the first lookup.
 - The small **help icon** (top-right) opens the project page
   (`https://github.com/s55oo/N1MM_callbook/`) in your browser.
 
@@ -173,7 +180,9 @@ cache_file=callbook_cache.json           (VHF: n1mm_VHFcallbook_cache.json)
 ```
 
 - Each `.cfg` and its matching `cache_file` are read/written from the same
-  folder as the executable/script.
+  folder as the executable/script. The app also writes a small
+  `*_window.json` (last window position) and `qrz_session.json` (QRZ XML
+  session key) there – both are safe to delete and are gitignored.
 - Both `.cfg` files are **gitignored** – they hold your QRZ login in
   **plain text**, so they are never committed and never land in a shared
   build. Only the `*.cfg.template` files (with placeholder credentials) are
@@ -219,6 +228,8 @@ callbook_cache.json       – HF local lookup cache (auto-created, gitignored)
 n1mm_VHFcallbook.cfg.template – VHF config template
 n1mm_VHFcallbook.cfg      – VHF config (gitignored; may hold QRZ login in plain text)
 n1mm_VHFcallbook_cache.json – VHF local lookup cache (auto-created, gitignored)
+callbook_window.json / n1mm_VHFcallbook_window.json – last window position (auto, gitignored)
+qrz_session.json     – cached QRZ XML session key (auto-created, gitignored)
 Callbook.bat         – source launcher (no console)
 manifest.xml         – PyInstaller manifest (common controls)
 n1mm_callbook.spec, n1mm_VHFcallbook.spec – PyInstaller build settings
@@ -234,6 +245,11 @@ dist\                – PyInstaller output
 
 ## 7. Changelog
 
+- **2.9 (HF) / 1.13 (VHF)** – latency: HTTPS connections to each source
+  are pooled and kept alive, and responses are gzip-compressed – time to
+  fill all three HF slots dropped from ~385 ms to ~155 ms (median) in
+  testing. The window position is remembered between runs, and the QRZ
+  XML session key is persisted so a restart skips the re-login.
 - **2.8 (HF) / 1.12 (VHF)** – fixed a hang where retyping a callsign while
   a lookup was still running could stop all further lookups until restart.
   Internal: the two apps now share one `run()`/`load_config()` entry point

@@ -2,10 +2,12 @@
 
 A compact always-on-top window that listens to the N1MM Logger+ external
 UDP broadcast (XML, port 12060) and automatically looks up the callsign
-currently in the radio/RX1. Each source is queried and ALL of its values
-are shown side by side (e.g. "MA MA MA" for the US state on HF, three
-locators on the VHF variant), so disagreements between sources stand out
-and the operator can pick the right one.
+currently in the radio/RX1. Every source is queried in parallel and ALL
+of its values are shown side by side (e.g. "MA MA MA" for the US state on
+HF, three locators on the VHF variant), each slot filling in as soon as
+that source answers, so disagreements between sources stand out and the
+operator can pick the right one. For non-US (DX) stations the HF window
+shows the operator name and country instead of a US state.
 
 QRZCQ.com is a public, free callbook that needs no account or API key -
 each callsign has a page at https://www.qrzcq.com/call/<CALL> whose
@@ -18,13 +20,13 @@ fetches for the same callsign and to stay polite to the server.
 
 Made by S55OO with AI assistance.
 
-Version: 2.2
+Version: 2.3
 
 Usage:
     python n1mm_callbook.py [--port 12060] [--config callbook.cfg]
 """
 
-__version__ = "2.2"
+__version__ = "2.3"
 
 import argparse
 import base64
@@ -41,7 +43,7 @@ import urllib.request
 import urllib.parse
 import xml.etree.ElementTree as ET
 
-USER_AGENT = "Mozilla/5.0 N1MM_callbook/2.2"
+USER_AGENT = "Mozilla/5.0 N1MM_callbook/2.3"
 HAMQTH_UA = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
     "(KHTML, like Gecko) Chrome/126.0 Safari/537.36"
@@ -465,9 +467,10 @@ class CallbookApp:
         self.current = None
         self._fetching = False
         self._debounce = None
-        # QRZ XML first: it answers via a single XML request, so its slot
-        # usually fills before the page scrapers. Added when credentials
-        # are present, otherwise the free sources run without it.
+        # QRZ XML takes slot 0 (shown left-most) when credentials are
+        # present, otherwise the free sources run without it. All sources
+        # are queried in parallel, so each slot fills as soon as that
+        # source answers regardless of its position in the chain.
         chain = []
         if qrz_username and qrz_password:
             chain.append(
@@ -594,12 +597,21 @@ class CallbookApp:
         threading.Thread(target=self._do_lookup, args=(call,), daemon=True).start()
 
     def _do_lookup(self, call):
-        # Runs in a worker thread; each source result is handed to the GUI
-        # as soon as that source has answered, so the display fills in
-        # source order (QRZ XML first when configured).
-        for i, fn in enumerate(self.lookup_chain):
-            res = fn(call)
+        # Fires every source at once (one thread each) so a slow source
+        # never holds up a fast one. Each result is posted to the GUI the
+        # moment that source answers; the slot index is kept, so the
+        # display still reads in chain order (QRZ XML, QRZCQ, HamQTH, ...)
+        # - it just fills in as fast as each source can reply instead of
+        # waiting for the whole chain.
+        def run(i, fn):
+            try:
+                res = fn(call)
+            except Exception:
+                res = None
             self._inbox.append((call, i, res))
+
+        for i, fn in enumerate(self.lookup_chain):
+            threading.Thread(target=run, args=(i, fn), daemon=True).start()
 
     def _poll_inbox(self):
         # GUI thread: drains results posted by the worker and renders them.
@@ -627,8 +639,18 @@ class CallbookApp:
             return ""
         return (info.get(key) or "").strip()
 
+    _US_NAMES = ("united states", "usa", "united states of america", "us")
+
     def _source_value(self, info):
-        return self._source_field(info, self.FIELD)
+        v = self._source_field(info, self.FIELD)
+        # The state column is US-only. When a source reports a non-US
+        # country its "state" is a foreign subdivision (e.g. QRZ XML gives
+        # "HE" for a DL call) - drop it so the DX branch shows the name.
+        if v and self.FIELD == "state":
+            country = self._source_field(info, "country").lower()
+            if country and country not in self._US_NAMES:
+                return ""
+        return v
 
     def _best_name(self, sources):
         # The operator name, printed only once; out of the candidates from
@@ -642,6 +664,15 @@ class CallbookApp:
             if a and not a.startswith(("unknown", "not found", "n/a", "na")):
                 names.append(n)
         return min(names, key=len) if names else ""
+
+    def _best_country(self, sources):
+        # Country, printed once - the first source in chain order that
+        # carries one. Used for DX stations, where there is no US state.
+        for s in sources:
+            c = self._source_field(s, "country")
+            if c:
+                return c
+        return ""
 
     def _render_slots(self, call, slots, pending):
         # Renders the main area at any stage of the lookup. Each slot maps
@@ -674,6 +705,14 @@ class CallbookApp:
                     text = name if name else line
             else:
                 text = line
+            bg = COLOR_ACTIVE
+        elif self.SHOW_NAME and self._best_name(finished):
+            # DX station: no US state from any source, but we do have an
+            # operator name - show it (with country when a source gives
+            # one) instead of "no data".
+            name = self._best_name(finished)
+            country = self._best_country(finished)
+            text = "{} - {}".format(name, country) if country else name
             bg = COLOR_ACTIVE
         elif not all_done:
             text = "…"

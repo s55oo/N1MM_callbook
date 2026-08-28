@@ -4,8 +4,9 @@ A variant of the callbook app that shows the QRA/maidenhead locator
 (e.g. JN76JG) of the worked station instead of the operator name. Sends
 the same N1MM UDP packets through the exact same QRZCQ.com parsing, with
 HamQTH.com and the QRZ.com public page as fallback locator sources. The
-paid QRZ.com XML service is added as the FIRST source when credentials
-are configured (one XML request, so it usually answers first).
+paid QRZ.com XML service is added as the first slot when credentials are
+configured. All sources are queried in parallel, so each locator slot
+fills as soon as that source answers.
 
 QRZ needs a paid XML subscription (https://www.qrz.com/page/xml_data.html);
 set qrz_username/qrz_password in n1mm_VHFcallbook.cfg to enable it.
@@ -15,13 +16,13 @@ to the servers.
 
 Made by S55OO with AI assistance.
 
-Version: 1.6
+Version: 1.7
 
 Usage:
     python n1mm_VHFcallbook.py [--port 12060] [--config n1mm_VHFcallbook.cfg]
 """
 
-__version__ = "1.6"
+__version__ = "1.7"
 
 import argparse
 import os
@@ -40,9 +41,10 @@ class VHFApp(cb.CallbookApp):
     # so a wrong one stands out; each source contributes its own value.
     FIELD = "grid"
     SHOW_NAME = False
-    # QRZCQ first, then HamQTH's Grid: row, then the locator computed from
+    # Slot order: QRZCQ, HamQTH's Grid: row, then the locator computed from
     # the coordinates on the public QRZ.com page. The paid QRZ XML service
-    # is appended automatically when credentials are configured.
+    # is prepended automatically when credentials are configured. All slots
+    # are fetched in parallel and render as each source replies.
     LOOKUP_CHAIN = (cb.qrzcq_lookup, cb.hamqth_lookup, cb.qrzdb_lookup)
 
 

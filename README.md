@@ -1,21 +1,26 @@
 # N1MM Callbook – N1MM Logger+ Contest Callbook
 
-> **Version:** 2.2 (HF) / 1.6 (VHF) · Made by **S55OO** with AI assistance.
+> **Version:** 2.3 (HF) / 1.7 (VHF) · Made by **S55OO** with AI assistance.
 
 A compact always-on-top window that listens to the N1MM Logger+ external
 UDP broadcast (XML, port **12060**) and automatically looks up the callsign
-you are working. Every source in the chain is queried and **all** of its
-values are shown side by side, so when the sources disagree the wrong one
-stands out and you can pick the right one. The window shows the worked
-station's **name – US state** in the main area (e.g. `Fred - MA MA MA`,
-name printed once as the shortest of the sources) and the **callsign** in
-the footer.
+you are working. Every source is queried **in parallel** and **all** of its
+values are shown side by side – each slot filling in the moment that
+source answers, so nothing waits for the slowest one – and when the
+sources disagree the wrong one stands out and you can pick the right one.
+The window shows the worked station's **name – US state** in the main area
+(e.g. `Fred - MA MA MA`, name printed once as the shortest of the sources)
+and the **callsign** in the footer. For a **non-US (DX) station**, where
+there is no US state, the HF window shows the **operator name and country**
+instead (e.g. `Hans - Germany`).
 
-The HF callbook pulls its state from up to **three sources**, in this
-order when your QRZ login is configured (one XML request, so it answers
-first): **[QRZ.com XML](https://www.qrz.com/page/xml_data.html) →
-[QRZCQ.com](https://www.qrzcq.com) → [HamQTH.com](https://www.hamqth.com)**.
-Without QRZ credentials it runs the two free sources.
+The HF callbook pulls its state from up to **three sources**:
+**[QRZ.com XML](https://www.qrz.com/page/xml_data.html),
+[QRZCQ.com](https://www.qrzcq.com) and
+[HamQTH.com](https://www.hamqth.com)**. They are queried at the same time;
+the slots are shown left-to-right in that order (QRZ XML left-most when
+your QRZ login is configured). Without QRZ credentials it runs the two
+free sources.
 
 A **VHF variant** (`n1mm_VHFcallbook.py` / `n1mm_VHFcallbook.exe`) is also
 included. It uses the same engine but shows the worked station's
@@ -29,9 +34,10 @@ square is the exchange. The **locator sources**:
 | HamQTH.com | `Grid:` row on `https://www.hamqth.com/<CALL>` |
 | QRZ.com | computed from the station coordinates embedded in the public `https://www.qrz.com/db/<CALL>` page ("Grid square" in the Detail tab) |
 
-With QRZ credentials configured, the QRZ XML service runs **first** and
-the listed sources follow; without credentials the VHF app uses the three
-free locator sources.
+All locator sources are queried **in parallel** and each slot fills as
+soon as that source replies. With QRZ credentials configured the QRZ XML
+service is added as the left-most slot; without credentials the VHF app
+uses the three free locator sources.
 
 QRZCQ.com is a free public callbook that needs **no account and no API key** –
 each callsign has a page at `https://www.qrzcq.com/call/<CALL>` whose lookup
@@ -103,23 +109,29 @@ python n1mm_VHFcallbook.py [--port 12060] [--config n1mm_VHFcallbook.cfg]
 
 - When a `LookupInfo` (type a call + press Space) or `ContactInfo` (QSO
   logged) packet arrives, the window shows the worked callsign in the
-  footer **immediately** and starts the lookup. Each source is queried and
-  **its value is shown as soon as that source answers**, in chain order –
-  `…` marks a slot still running. So with QRZ XML configured you see e.g.
-  `FRED - MA … …` first, then the rest fill in to `FRED - MA MA MA`.
-- The **QRZ.com XML service is always the first source** when credentials
-  are configured (one XML call, so it usually answers first); the free
-  sources follow. When the three values differ (e.g. `JN95EQ - JN95FQ …`)
-  you see it immediately and can decide which one is right for the
-  exchange.
-- The main area shows the worked station's **shortest operator name**
+  footer **immediately** and starts the lookup. **All sources are queried
+  in parallel** and **each slot's value is shown the moment that source
+  answers** – `…` marks a slot still running. A slow source never holds up
+  a fast one: you might see `FRED - … MA …` first, then the rest fill in to
+  `FRED - MA MA MA`.
+- The slots are laid out left-to-right in a fixed order –
+  **QRZ.com XML, QRZCQ.com, HamQTH.com** (QRZ XML only when credentials are
+  configured; the **VHF variant** adds **QRZ.com public page** as a fourth
+  slot). The order is just the column layout, not a priority – every source
+  is fetched at the same time. When the values differ (e.g.
+  `JN95EQ - JN95FQ …`) you see it immediately and can decide which one is
+  right for the exchange.
+- For a **US station** the main area shows the **shortest operator name**
   (printed once) followed by the **US state** once per source, e.g.
-  `FRED - MA MA MA` (a dash `-` marks a source that had no state; the
-  font shrinks automatically for long text). The HF lookup chain is
-  **QRZ.com XML → QRZCQ.com → HamQTH.com** when QRZ is configured. The
-  **VHF variant** shows the **QRA/maidenhead locator** the same way, from
-  **QRZ.com XML → QRZCQ.com → HamQTH.com → QRZ.com(public page)** (XML
-  only when configured).
+  `FRED - MA MA MA` (a dash `-` marks a source that returned no state; the
+  font shrinks automatically for long text).
+- For a **non-US (DX) station** there is no US state, so the HF window
+  shows the **operator name and country** instead, e.g. `Hans - Germany`
+  (or just the name when no source reports a country). A foreign
+  subdivision that QRZ XML sometimes returns in the state field (e.g. `HE`
+  for a German call) is ignored so the name/country line is shown.
+- The **VHF variant** shows the **QRA/maidenhead locator** the same
+  side-by-side way and has no name/DX handling – it only needs the grid.
 - **Local computer only:** the app only reacts to packets sent from *this*
   PC (identified by its local interface IPs). Broadcasts from other
   stations on the network are ignored, so only the local operator's
@@ -147,17 +159,20 @@ udp_port=12060
 cache_days=30
 cache_file=callbook_cache.json           (VHF: n1mm_VHFcallbook_cache.json)
 
-# Optional - paid QRZ.com XML service (third state / fourth locator source):
+# Optional - paid QRZ.com XML service (extra state / locator slot):
 # qrz_username=S55OO
 # qrz_password=YOUR_QRZ_PASSWORD
 ```
 
 - Each `.cfg` and its matching `cache_file` are read/written from the same
   folder as the executable/script.
-- Both `.cfg` files are **gitignored** – they hold your QRZ login, so they
-  are never committed and never land in a shared build. Copy the matching
-  `*.cfg.template`, fill in your QRZ credentials, and rename to
-  `callbook.cfg` / `n1mm_VHFcallbook.cfg`.
+- Both `.cfg` files are **gitignored** – they hold your QRZ login in
+  **plain text**, so they are never committed and never land in a shared
+  build. Only the `*.cfg.template` files (with placeholder credentials) are
+  in the repo. Copy the matching template, fill in your QRZ credentials,
+  and rename to `callbook.cfg` / `n1mm_VHFcallbook.cfg`.
+- The built `.exe` files do **not** embed the `.cfg`; they read it from
+  disk at run time, so shipping an EXE never leaks your password.
 
 ---
 
@@ -191,11 +206,11 @@ n1mm_callbook.exe    – HF standalone executable (built, no Python needed)
 n1mm_VHFcallbook.py  – VHF locator variant (source code)
 n1mm_VHFcallbook.exe – VHF standalone executable (built, no Python needed)
 callbook.cfg.template     – HF config template (copy to callbook.cfg)
-callbook.cfg              – HF config (gitignored; may hold QRZ login)
-callbook_cache.json       – HF local lookup cache (auto-created)
+callbook.cfg              – HF config (gitignored; may hold QRZ login in plain text)
+callbook_cache.json       – HF local lookup cache (auto-created, gitignored)
 n1mm_VHFcallbook.cfg.template – VHF config template
-n1mm_VHFcallbook.cfg      – VHF config (gitignored; may hold QRZ login)
-n1mm_VHFcallbook_cache.json – VHF local lookup cache (auto-created)
+n1mm_VHFcallbook.cfg      – VHF config (gitignored; may hold QRZ login in plain text)
+n1mm_VHFcallbook_cache.json – VHF local lookup cache (auto-created, gitignored)
 Callbook.bat         – source launcher (no console)
 manifest.xml         – PyInstaller manifest (common controls)
 n1mm_callbook.spec, n1mm_VHFcallbook.spec – PyInstaller build settings
@@ -204,5 +219,17 @@ dist\                – PyInstaller output
 
 > QRZ.com XML needs a **paid subscription** for full records. Even without
 > it, QRZ returns the US state (and a plain name/address) for a login, so
-> the HF app still gets its three state sources; the VHF app's locators are
-> all free (QRZCQ, HamQTH, QRZ public page).
+> the HF app still gets its three state sources (QRZ XML, QRZCQ, HamQTH);
+> the VHF app's locators are all free (QRZCQ, HamQTH, QRZ public page).
+
+---
+
+## 7. Changelog
+
+- **2.3 (HF) / 1.7 (VHF)** – all sources are now queried **in parallel**;
+  each slot fills as soon as that source answers instead of waiting for
+  the whole chain. HF: **non-US (DX) stations** now show the operator
+  **name and country** instead of `no data`; a foreign subdivision
+  returned by QRZ XML in the state field is ignored.
+- **2.2 (HF) / 1.6 (VHF)** – per-source side-by-side display; QRZ.com XML
+  added as an optional source.

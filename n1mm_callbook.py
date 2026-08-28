@@ -14,13 +14,13 @@ fetches for the same callsign and to stay polite to the server.
 
 Made by S55OO with AI assistance.
 
-Version: 1.1
+Version: 1.2
 
 Usage:
     python n1mm_callbook.py [--port 12060] [--config callbook.cfg]
 """
 
-__version__ = "1.1"
+__version__ = "1.2"
 
 import argparse
 import base64
@@ -36,7 +36,7 @@ import urllib.request
 import urllib.parse
 import xml.etree.ElementTree as ET
 
-USER_AGENT = "Mozilla/5.0 N1MM_callbook/1.1"
+USER_AGENT = "Mozilla/5.0 N1MM_callbook/1.2"
 
 DEFAULT_PORT = 12060
 DEFAULT_CACHE_DAYS = 30
@@ -47,8 +47,9 @@ HELP_ICON_B64 = (
 COLOR_IDLE = "#3a3a3a"
 COLOR_ACTIVE = "#1f6feb"
 
-FONT_SIZE_CALL = 20
-FONT_SIZE_INFO = 10
+FONT_SIZE_NAME = 18
+FONT_SIZE_STATE = 13
+FONT_SIZE_FOOTER = 10
 
 
 def packet_callsign(data):
@@ -228,6 +229,7 @@ def qrzcq_lookup(call, timeout=15):
         "qth": addr,
         "grid": grab("Locator"),
         "class": grab("Class"),
+        "state": grab("Federal state"),
         "country": "",
     }
 
@@ -277,24 +279,28 @@ class CallbookApp:
         self.canvas = tk.Canvas(
             frame,
             width=330,
-            height=64,
+            height=70,
             bg=COLOR_IDLE,
             highlightthickness=1,
             highlightbackground="#888888",
         )
         self.canvas.pack(fill=tk.X)
-        self.call_id = self.canvas.create_text(
-            165, 32, text="—", font=("Segoe UI", FONT_SIZE_CALL, "bold"), fill="white"
+        self.name_id = self.canvas.create_text(
+            165, 28, text="—", font=("Segoe UI", FONT_SIZE_NAME, "bold"), fill="white"
+        )
+        self.state_id = self.canvas.create_text(
+            165, 52, text="", font=("Segoe UI", FONT_SIZE_STATE, "bold"), fill="white"
         )
         self.canvas.bind("<Configure>", self._recenter_text)
 
-        self.info = tk.Label(
-            frame, text="", font=("Segoe UI", FONT_SIZE_INFO), justify=tk.CENTER
+        self.call_label = tk.Label(
+            frame, text="", font=("Segoe UI", FONT_SIZE_FOOTER), justify=tk.CENTER
         )
-        self.info.pack(fill=tk.X)
+        self.call_label.pack(fill=tk.X)
 
     def _recenter_text(self, event):
-        self.canvas.coords(self.call_id, event.width / 2.0, event.height / 2.0)
+        self.canvas.coords(self.name_id, event.width / 2.0, 28)
+        self.canvas.coords(self.state_id, event.width / 2.0, 52)
 
     def _open_help(self):
         try:
@@ -332,14 +338,15 @@ class CallbookApp:
             self._fetch_async(call)
 
     def _show_call(self, call):
-        self.canvas.itemconfigure(self.call_id, text=call)
+        self.call_label.configure(text=call)
         info = self.cache.get(call)
         if info is not None:
             self._set_info(call, info, cached=True)
         else:
             # cleared visually while waiting for the debounce / lookup
             self.canvas.configure(bg=COLOR_ACTIVE)
-            self.info.configure(text="…")
+            self.canvas.itemconfigure(self.name_id, text="…")
+            self.canvas.itemconfigure(self.state_id, text="")
 
     def _fetch_async(self, call):
         if self._fetching:
@@ -366,26 +373,30 @@ class CallbookApp:
         self.root.after(500, self._flush_pending)
 
     def _set_info(self, call, info, cached=False, status="", searching=False):
-        lines = []
+        name = ""
+        state = ""
         if info:
-            if info.get("name"):
-                lines.append("Name: {}".format(info["name"]))
-            if info.get("qth"):
-                lines.append("QTH:  {}".format(info["qth"]))
-            if info.get("grid"):
-                lines.append("Grid: {}".format(info["grid"]))
-            if info.get("country"):
-                lines.append("Country: {}".format(info["country"]))
-            if cached:
-                lines.append("(cached)")
+            name = (info.get("name") or "").strip()
+            state = (info.get("state") or "").strip()
+            if not state:
+                # fall back to country for non-US/pre-1998 stations
+                state = ""
+        if searching:
+            self.canvas.configure(bg=COLOR_ACTIVE)
+            self.canvas.itemconfigure(self.name_id, text="…")
+            self.canvas.itemconfigure(self.state_id, text="")
+        elif info is not None and name:
+            self.canvas.configure(bg=COLOR_ACTIVE)
+            self.canvas.itemconfigure(self.name_id, text=name)
+            self.canvas.itemconfigure(self.state_id, text=state)
         elif status == "api error":
-            lines.append("lookup failed – no data")
-        elif searching:
-            lines.append("looking up …")
+            self.canvas.configure(bg=COLOR_IDLE)
+            self.canvas.itemconfigure(self.name_id, text="lookup failed")
+            self.canvas.itemconfigure(self.state_id, text="")
         else:
-            lines.append("no data")
-        self.canvas.configure(bg=COLOR_ACTIVE)
-        self.info.configure(text="  \n  ".join(lines) if lines else "")
+            self.canvas.configure(bg=COLOR_IDLE)
+            self.canvas.itemconfigure(self.name_id, text="no data")
+            self.canvas.itemconfigure(self.state_id, text="")
 
     def on_close(self):
         self.stop.set()

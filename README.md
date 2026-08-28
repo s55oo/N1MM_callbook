@@ -1,11 +1,12 @@
 # N1MM Callbook – N1MM Logger+ Contest Callbook
 
-> **Version:** 1.1 · Made by **S55OO** with AI assistance.
+> **Version:** 1.2 · Made by **S55OO** with AI assistance.
 
 A compact always-on-top window that listens to the N1MM Logger+ external
 UDP broadcast (XML, port **12060**) and automatically looks up the callsign
-currently in the radio/RX1 via **[QRZCQ.com](https://www.qrzcq.com)**.
-The operator name, QTH and grid square are shown under the callsign.
+you are working via **[QRZCQ.com](https://www.qrzcq.com)**. The window
+shows the worked station's **name** and **US state** in the main area, and
+the **callsign** in the footer.
 
 QRZCQ.com is a free public callbook that needs **no account and no API key** –
 each callsign has a page at `https://www.qrzcq.com/call/<CALL>` whose lookup
@@ -24,16 +25,19 @@ topmost Tkinter window with a colored canvas and a help icon.
 
 ## 1. N1MM Logger+ setup
 
-1. In N1MM Logger+: **File → Settings → Configurer → External Broadcast**,
-   enable the reports you need (**RadioInfo** at minimum, and
-   **ContactInfo** if you want the working callsign).
-2. **Broadcast Address**: your subnet broadcast (e.g. `192.168.178.255`)
-   so this computer sees the broadcast.
-3. **Broadcast Port**: `12060` (default, do not change).
-4. Make sure **Broadcast Data is enabled** on the transmitting computer.
+1. In N1MM Logger+: **File → Settings → Configurer → Broadcast Data**
+   (a.k.a. External Broadcast), enable:
+   - **External Callsign Lookup** – sends a `LookupInfo` packet after you
+     type a callsign and press **Space** (i.e. as you move to the exchange
+     field). This is the primary trigger for the callbook.
+   - **Contacts** – sends a `ContactInfo` packet when a QSO is logged.
+2. Set the **IP:Port** next to them to your PC's address (or the subnet
+   broadcast) and port **12060**.
+3. Make sure **Broadcast Data is enabled** on the transmitting computer.
 
-> The app listens on all interfaces and picks the callsign out of the
-> `RadioInfo` XML packet automatically.
+> The app listens on all interfaces and picks the worked callsign out of
+> the `LookupInfo`/`ContactInfo` packet automatically. `RadioInfo` only
+> carries the local operator's own call and is deliberately ignored.
 
 ---
 
@@ -58,14 +62,17 @@ python n1mm_callbook.py [--port 12060] [--config callbook.cfg]
 
 ## 3. Behavior
 
-- When a `RadioInfo` packet with a callsign arrives, the window shows the
-  callsign in large text and the operator details below.
-- Lookups go to QRZCQ.com. Results are cached locally in
-  `callbook_cache.json` to avoid repeated network fetches for the same
-  callsign and to stay polite to the server.
-- Cached lines are marked `(cached)`. Cache freshness is controlled by
-  `cache_days` in `callbook.cfg` (default 30 days).
-- If the lookup fails the window shows `lookup failed – no data`.
+- When a `LookupInfo` (type a call + press Space) or `ContactInfo` (QSO
+  logged) packet arrives, the window shows the worked callsign in the
+  footer and looks up the operator on QRZCQ.com.
+- The main area shows the operator's **name** and, for US stations, the
+  **2-letter state** (blank for non-US calls).
+- Lookups are cached locally in `callbook_cache.json` to avoid repeated
+  network fetches for the same callsign and to stay polite to the server.
+- Cache freshness is controlled by `cache_days` in `callbook.cfg`
+  (default 30 days).
+- If the lookup fails the main area shows `lookup failed`; if a callsign
+  has no entry it shows `no data`.
 - The small **help icon** (top-right) opens QRZCQ.com in your browser.
 
 ---

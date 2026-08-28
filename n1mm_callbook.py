@@ -14,13 +14,13 @@ fetches for the same callsign and to stay polite to the server.
 
 Made by S55OO with AI assistance.
 
-Version: 1.8
+Version: 1.9
 
 Usage:
     python n1mm_callbook.py [--port 12060] [--config callbook.cfg]
 """
 
-__version__ = "1.8"
+__version__ = "1.9"
 
 import argparse
 import base64
@@ -37,7 +37,7 @@ import urllib.request
 import urllib.parse
 import xml.etree.ElementTree as ET
 
-USER_AGENT = "Mozilla/5.0 N1MM_callbook/1.8"
+USER_AGENT = "Mozilla/5.0 N1MM_callbook/1.9"
 HAMQTH_UA = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
     "(KHTML, like Gecko) Chrome/126.0 Safari/537.36"
@@ -303,6 +303,9 @@ def _qrz_login(username, password, timeout=15):
             raw = resp.read().decode("utf-8", errors="replace")
     except OSError:
         return None, "network error"
+    # The QRZ XML carries a default namespace; drop it so the plain tag
+    # lookups below (Error, Session/Key, ...) work without namespace paths.
+    raw = raw.replace(' xmlns="http://xml.qrz.com"', "", 1)
     try:
         root = ET.fromstring(raw)
     except ET.ParseError:
@@ -341,6 +344,7 @@ def qrz_lookup(call, username="", password="", timeout=15):
             raw = resp.read().decode("utf-8", errors="replace")
     except OSError:
         return None
+    raw = raw.replace(' xmlns="http://xml.qrz.com"', "", 1)
     try:
         root = ET.fromstring(raw)
     except ET.ParseError:
@@ -370,6 +374,68 @@ def qrz_lookup(call, username="", password="", timeout=15):
     }
 
 
+def maidenhead_from_latlon(lat, lon):
+    """Convert WGS84 coordinates to a 6-char maidenhead locator.
+
+    Used to derive the grid square from the coordinates that QRZ.com
+    embeds on its public callsign pages.
+    """
+    try:
+        lat = float(lat)
+        lon = float(lon)
+    except (TypeError, ValueError):
+        return ""
+    a = lon + 180.0
+    b = lat + 90.0
+    out = chr(ord("A") + int(a / 20)) + chr(ord("A") + int(b / 10))
+    a -= int(a / 20) * 20
+    b -= int(b / 10) * 10
+    out += str(int(a / 2)) + str(int(b / 1))
+    a -= int(a / 2) * 2
+    b -= int(b / 1) * 1
+    out += chr(ord("A") + int(a * 12)) + chr(ord("A") + int(b * 24))
+    return out
+
+
+def qrzdb_lookup(call, timeout=15):
+    """Grab the locator from the public QRZ.com /db/<CALL> page.
+
+    QRZ only shows its full Detail tab ("Grid square") to logged-in users,
+    but every callsign page embeds the station's coordinates as
+    cs_lat / cs_lon - so the 6-char maidenhead locator can be computed
+    for free, without any account or subscription.
+
+    Returns a dict in the same shape as qrzcq_lookup (grid filled in from
+    the coordinates), or None on a network error.
+    """
+    url = "https://www.qrz.com/db/" + urllib.parse.quote(call.upper())
+    try:
+        req = urllib.request.Request(
+            url,
+            headers={
+                "User-Agent": HAMQTH_UA,
+                "Accept-Language": "en-US,en;q=0.9",
+            },
+        )
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            raw = resp.read().decode("utf-8", errors="replace")
+    except OSError:
+        return None
+    lat = re.search(r'var cs_lat = "([0-9.\-]+)"', raw)
+    lon = re.search(r'var cs_lon = "([0-9.\-]+)"', raw)
+    grid = ""
+    if lat and lon:
+        grid = maidenhead_from_latlon(lat.group(1), lon.group(1))
+    return {
+        "name": "",
+        "qth": "",
+        "grid": grid,
+        "class": "",
+        "state": "",
+        "country": "",
+    }
+
+
 def app_dir():
     if getattr(sys, "frozen", False):
         return os.path.dirname(sys.executable)
@@ -379,9 +445,9 @@ def app_dir():
 class CallbookApp:
     APP_TITLE = "N1MM Callbook"
     # Lookup sources tried in order; results are merged (first non-empty
-    # value for each field wins). Variants like the VHF app add HamQTH as
-    # an extra source.
-    LOOKUP_CHAIN = (qrzcq_lookup,)
+    # value for each field wins, except the locator where the longest -
+    # most precise - value wins). Variants can add more sources.
+    LOOKUP_CHAIN = (qrzcq_lookup, hamqth_lookup)
 
     def __init__(self, root, cache_path, port, cache_days, qrz_username="", qrz_password=""):
         self.root = root
@@ -624,8 +690,13 @@ def main():
             os.path.join(os.path.dirname(args.config), settings["cache_file"])
         )
 
+    # Optional QRZ.com XML service (paid subscription). Empty credentials
+    # keep QRZ out of the lookup chain.
+    qrz_username = settings.get("qrz_username", "")
+    qrz_password = settings.get("qrz_password", "")
+
     root = tk.Tk()
-    CallbookApp(root, cache_file, port, cache_days)
+    CallbookApp(root, cache_file, port, cache_days, qrz_username, qrz_password)
     root.mainloop()
 
 

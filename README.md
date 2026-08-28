@@ -1,22 +1,31 @@
 # N1MM Callbook – N1MM Logger+ Contest Callbook
 
-> **Version:** 1.8 (HF) / 1.3 (VHF) · Made by **S55OO** with AI assistance.
+> **Version:** 1.9 (HF) / 1.4 (VHF) · Made by **S55OO** with AI assistance.
 
 A compact always-on-top window that listens to the N1MM Logger+ external
 UDP broadcast (XML, port **12060**) and automatically looks up the callsign
-you are working via **[QRZCQ.com](https://www.qrzcq.com)**. The window
-shows the worked station's **name – US state** in the main area, and
-the **callsign** in the footer.
+you are working. The window shows the worked station's **name – US state**
+in the main area, and the **callsign** in the footer.
+
+The HF callbook merges its data from **three state sources**:
+**[QRZCQ.com](https://www.qrzcq.com)** and **[HamQTH.com](https://www.hamqth.com)**
+(both free, no account) plus the optional paid **[QRZ.com XML service](https://www.qrz.com/page/xml_data.html)**
+when your QRZ login is configured.
 
 A **VHF variant** (`n1mm_VHFcallbook.py` / `n1mm_VHFcallbook.exe`) is also
 included. It uses the same engine but shows the worked station's
 **QRA/maidenhead locator** (e.g. `JN76JG`) in the main area – handy for
-VHF/UHF contests where the grid square is the exchange. When the QRZCQ.com
-page has no locator, it automatically falls back to the public page on
-**[HamQTH.com](https://www.hamqth.com)** (e.g. `https://www.hamqth.com/<CALL>`)
-whose `Grid:` row carries the locator. As an **optional third source**, the
-paid **[QRZ.com XML Callbook Data service](https://www.qrz.com/page/xml_data.html)**
-can be enabled by putting your QRZ login into `n1mm_VHFcallbook.cfg`.
+VHF/UHF contests where the grid square is the exchange. It merges
+**three locator sources**:
+
+| Source | How the locator is read |
+|---|---|
+| QRZCQ.com | `Grid:` / `Locator:` row on `https://www.qrzcq.com/call/<CALL>` |
+| HamQTH.com | `Grid:` row on `https://www.hamqth.com/<CALL>` |
+| QRZ.com | computed from the station coordinates embedded in the public `https://www.qrz.com/db/<CALL>` page ("Grid square" in the Detail tab) |
+
+A paid QRZ XML subscription can optionally be added as a **fourth** source
+via `n1mm_VHFcallbook.cfg`.
 
 QRZCQ.com is a free public callbook that needs **no account and no API key** –
 each callsign has a page at `https://www.qrzcq.com/call/<CALL>` whose lookup
@@ -88,12 +97,14 @@ python n1mm_VHFcallbook.py [--port 12060] [--config n1mm_VHFcallbook.cfg]
 
 - When a `LookupInfo` (type a call + press Space) or `ContactInfo` (QSO
   logged) packet arrives, the window shows the worked callsign in the
-  footer and looks up the operator on QRZCQ.com.
+  footer and looks up the operator on the network.
 - The main area shows the operator's **name – US state** (state blank for
-  non-US calls; the font shrinks automatically for long names). The **VHF
-  variant** shows the **QRA/maidenhead locator** instead. The VHF lookup
-  chain is **QRZCQ.com → HamQTH.com → QRZ.com (if configured)**; fields
-  are merged and the most precise (longest) locator wins.
+  non-US calls; the font shrinks automatically for long names). The HF
+  lookup chain is **QRZCQ.com → HamQTH.com → QRZ.com XML (if configured)**,
+  so US states come from up to three sources. The **VHF variant** shows
+  the **QRA/maidenhead locator** instead, from **QRZCQ.com → HamQTH.com →
+  QRZ.com(public page)** (plus QRZ XML when configured). Results are
+  merged and the most precise (longest) locator wins.
 - **Local computer only:** the app only reacts to packets sent from *this*
   PC (identified by its local interface IPs). Broadcasts from other
   stations on the network are ignored, so only the local operator's
@@ -111,7 +122,9 @@ python n1mm_VHFcallbook.py [--port 12060] [--config n1mm_VHFcallbook.cfg]
 
 ## 4. Configuration
 
-`callbook.cfg` (HF) / `n1mm_VHFcallbook.cfg` (VHF):
+`callbook.cfg` (HF) / `n1mm_VHFcallbook.cfg` (VHF). Both are optional; the
+apps run with defaults when no `.cfg` exists. Templates are in the repo:
+`callbook.cfg.template` and `n1mm_VHFcallbook.cfg.template`.
 
 ```
 [settings]
@@ -119,16 +132,17 @@ udp_port=12060
 cache_days=30
 cache_file=callbook_cache.json           (VHF: n1mm_VHFcallbook_cache.json)
 
-# VHF only - optional paid QRZ.com XML service:
+# Optional - paid QRZ.com XML service (third state / fourth locator source):
 # qrz_username=S55OO
 # qrz_password=YOUR_QRZ_PASSWORD
 ```
 
 - Each `.cfg` and its matching `cache_file` are read/written from the same
   folder as the executable/script.
-- `n1mm_VHFcallbook.cfg` is **gitignored** (it may hold your QRZ password).
-  Copy the `n1mm_VHFcallbook.cfg.template` from the repo, or just create a
-  file with the settings you want to override.
+- Both `.cfg` files are **gitignored** – they hold your QRZ login, so they
+  are never committed and never land in a shared build. Copy the matching
+  `*.cfg.template`, fill in your QRZ credentials, and rename to
+  `callbook.cfg` / `n1mm_VHFcallbook.cfg`.
 
 ---
 
@@ -161,12 +175,19 @@ n1mm_callbook.py     – main application, HF callbook (source code)
 n1mm_callbook.exe    – HF standalone executable (built, no Python needed)
 n1mm_VHFcallbook.py  – VHF locator variant (source code)
 n1mm_VHFcallbook.exe – VHF standalone executable (built, no Python needed)
-callbook.cfg         – HF configuration (UDP port, cache settings)
-callbook_cache.json  – HF local lookup cache (auto-created)
-n1mm_VHFcallbook.cfg – VHF configuration (optional, else defaults used)
+callbook.cfg.template     – HF config template (copy to callbook.cfg)
+callbook.cfg              – HF config (gitignored; may hold QRZ login)
+callbook_cache.json       – HF local lookup cache (auto-created)
+n1mm_VHFcallbook.cfg.template – VHF config template
+n1mm_VHFcallbook.cfg      – VHF config (gitignored; may hold QRZ login)
 n1mm_VHFcallbook_cache.json – VHF local lookup cache (auto-created)
 Callbook.bat         – source launcher (no console)
 manifest.xml         – PyInstaller manifest (common controls)
 n1mm_callbook.spec, n1mm_VHFcallbook.spec – PyInstaller build settings
 dist\                – PyInstaller output
 ```
+
+> QRZ.com XML needs a **paid subscription** for full records. Even without
+> it, QRZ returns the US state (and a plain name/address) for a login, so
+> the HF app still gets its three state sources; the VHF app's locators are
+> all free (QRZCQ, HamQTH, QRZ public page).

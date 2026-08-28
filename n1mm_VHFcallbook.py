@@ -2,9 +2,9 @@
 
 A variant of the callbook app that shows the QRA/maidenhead locator
 (e.g. JN76JG) of the worked station instead of the operator name. Sends
-the same N1MM UDP packets through the exact same QRZCQ.com parsing, and
-falls back to the HamQTH.com public page - and optionally the paid
-QRZ.com XML service - when the locator is missing.
+the same N1MM UDP packets through the exact same QRZCQ.com parsing, with
+HamQTH.com and the QRZ.com public page as fallback locator sources. The
+paid QRZ.com XML service can be added as an optional fourth source.
 
 QRZ needs a paid XML subscription (https://www.qrz.com/page/xml_data.html);
 set qrz_username/qrz_password in n1mm_VHFcallbook.cfg to enable it.
@@ -14,13 +14,13 @@ to the servers.
 
 Made by S55OO with AI assistance.
 
-Version: 1.3
+Version: 1.4
 
 Usage:
     python n1mm_VHFcallbook.py [--port 12060] [--config n1mm_VHFcallbook.cfg]
 """
 
-__version__ = "1.3"
+__version__ = "1.4"
 
 import argparse
 import os
@@ -35,10 +35,10 @@ CACHE_NAME = "n1mm_VHFcallbook_cache.json"
 
 class VHFApp(cb.CallbookApp):
     APP_TITLE = "N1MM VHF Callbook"
-    # QRZCQ first; if the QRZCQ page lacks a locator, hamqth_lookup fills
-    # the grid (and other fields) in from HamQTH.com, and the result is
-    # cached as usual.
-    LOOKUP_CHAIN = (cb.qrzcq_lookup, cb.hamqth_lookup)
+    # QRZCQ first, then HamQTH's Grid: row, then the locator computed from
+    # the coordinates on the public QRZ.com page. The paid QRZ XML service
+    # is appended automatically when credentials are configured.
+    LOOKUP_CHAIN = (cb.qrzcq_lookup, cb.hamqth_lookup, cb.qrzdb_lookup)
 
     def _line(self, info):
         # Show only the maidenhead locator (e.g. JN76JG) in the main area.

@@ -21,13 +21,13 @@ fetches for the same callsign and to stay polite to the server.
 
 Made by S55OO with AI assistance.
 
-Version: 2.4
+Version: 2.5
 
 Usage:
     python n1mm_callbook.py [--port 12060] [--config callbook.cfg]
 """
 
-__version__ = "2.4"
+__version__ = "2.5"
 
 import argparse
 import base64
@@ -44,7 +44,7 @@ import urllib.request
 import urllib.parse
 import xml.etree.ElementTree as ET
 
-USER_AGENT = "Mozilla/5.0 N1MM_callbook/2.4"
+USER_AGENT = "Mozilla/5.0 N1MM_callbook/2.5"
 HAMQTH_UA = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
     "(KHTML, like Gecko) Chrome/126.0 Safari/537.36"
@@ -107,6 +107,16 @@ def normalize_call(call):
     if not call:
         return ""
     return "".join(ch for ch in call.upper() if ch.isalnum() or ch in "/.:")
+
+
+def normalize_grid(grid):
+    """Upper-case a maidenhead locator so sources agree on case.
+
+    Some sources return the sub-square in lower case (e.g. "JN46la") and
+    others in upper case ("JN46LA"); without this they would look like a
+    disagreement in the side-by-side display.
+    """
+    return (grid or "").strip().upper()
 
 
 def local_interfaces():
@@ -249,7 +259,7 @@ def qrzcq_lookup(call, timeout=15):
     return {
         "name": name,
         "qth": addr,
-        "grid": grab("Locator"),
+        "grid": normalize_grid(grab("Locator")),
         "class": grab("Class"),
         "state": grab("Federal state"),
         "cqzone": grab("CQ Zone"),
@@ -291,7 +301,7 @@ def hamqth_lookup(call, timeout=15):
     return {
         "name": grab("Name"),
         "qth": grab("QTH"),
-        "grid": grab("Grid"),
+        "grid": normalize_grid(grab("Grid")),
         "class": grab("Class"),
         "state": grab("US State") or grab("State"),
         "cqzone": grab("CQ") or grab("CQ zone"),
@@ -380,7 +390,7 @@ def qrz_lookup(call, username="", password="", timeout=15):
     return {
         "name": t("fname") or t("name"),
         "qth": qth,
-        "grid": t("grid"),
+        "grid": normalize_grid(t("grid")),
         "class": t("class"),
         "state": t("state"),
         "cqzone": t("cqzone"),
@@ -439,7 +449,7 @@ def qrzdb_lookup(call, timeout=15):
     lon = re.search(r'var cs_lon = "([0-9.\-]+)"', raw)
     grid = ""
     if lat and lon:
-        grid = maidenhead_from_latlon(lat.group(1), lon.group(1))
+        grid = normalize_grid(maidenhead_from_latlon(lat.group(1), lon.group(1)))
     return {
         "name": "",
         "qth": "",

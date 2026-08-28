@@ -232,6 +232,10 @@ dist\                – PyInstaller output
 
 ## 7. Changelog
 
+- **2.5 (HF) / 1.9 (VHF)** – VHF: locators are upper-cased on the way in
+  (some sources return the sub-square lower case, e.g. `JN46la` vs
+  `JN46LA`), so a pure case difference no longer looks like a source
+  disagreement.
 - **2.4 (HF) / 1.8 (VHF)** – HF now also looks up the **CQ zone** from
   every source and shows it next to the state as a `state/zone` token
   (e.g. `MA/5`); DX stations show the CQ zone after the country. Cache

@@ -1,6 +1,6 @@
 # N1MM Callbook – N1MM Logger+ Contest Callbook
 
-> **Version:** 2.1 (HF) / 1.5 (VHF) · Made by **S55OO** with AI assistance.
+> **Version:** 2.2 (HF) / 1.6 (VHF) · Made by **S55OO** with AI assistance.
 
 A compact always-on-top window that listens to the N1MM Logger+ external
 UDP broadcast (XML, port **12060**) and automatically looks up the callsign
@@ -11,17 +11,17 @@ station's **name – US state** in the main area (e.g. `Fred - MA MA MA`,
 name printed once as the shortest of the sources) and the **callsign** in
 the footer.
 
-The HF callbook pulls its state from **three sources**:
-**[QRZCQ.com](https://www.qrzcq.com)** and **[HamQTH.com](https://www.hamqth.com)**
-(both free, no account) plus the optional paid **[QRZ.com XML service](https://www.qrz.com/page/xml_data.html)**
-when your QRZ login is configured.
+The HF callbook pulls its state from up to **three sources**, in this
+order when your QRZ login is configured (one XML request, so it answers
+first): **[QRZ.com XML](https://www.qrz.com/page/xml_data.html) →
+[QRZCQ.com](https://www.qrzcq.com) → [HamQTH.com](https://www.hamqth.com)**.
+Without QRZ credentials it runs the two free sources.
 
 A **VHF variant** (`n1mm_VHFcallbook.py` / `n1mm_VHFcallbook.exe`) is also
 included. It uses the same engine but shows the worked station's
-**QRA/maidenhead locator** (e.g. `JN76HD`) in the main area, again from
-three sources shown side by side (e.g. `JN76HD JN76HD JN76HD`) – handy for
-VHF/UHF contests where the grid square is the exchange. The **three
-locator sources**:
+**QRA/maidenhead locator** (e.g. `JN76HD`) in the main area, from the
+sources shown side by side – handy for VHF/UHF contests where the grid
+square is the exchange. The **locator sources**:
 
 | Source | How the locator is read |
 |---|---|
@@ -29,8 +29,9 @@ locator sources**:
 | HamQTH.com | `Grid:` row on `https://www.hamqth.com/<CALL>` |
 | QRZ.com | computed from the station coordinates embedded in the public `https://www.qrz.com/db/<CALL>` page ("Grid square" in the Detail tab) |
 
-A paid QRZ XML subscription can optionally be added as a **fourth** source
-via `n1mm_VHFcallbook.cfg`.
+With QRZ credentials configured, the QRZ XML service runs **first** and
+the listed sources follow; without credentials the VHF app uses the three
+free locator sources.
 
 QRZCQ.com is a free public callbook that needs **no account and no API key** –
 each callsign has a page at `https://www.qrzcq.com/call/<CALL>` whose lookup
@@ -102,17 +103,23 @@ python n1mm_VHFcallbook.py [--port 12060] [--config n1mm_VHFcallbook.cfg]
 
 - When a `LookupInfo` (type a call + press Space) or `ContactInfo` (QSO
   logged) packet arrives, the window shows the worked callsign in the
-  footer and looks up the operator on the network.
+  footer **immediately** and starts the lookup. Each source is queried and
+  **its value is shown as soon as that source answers**, in chain order –
+  `…` marks a slot still running. So with QRZ XML configured you see e.g.
+  `FRED - MA … …` first, then the rest fill in to `FRED - MA MA MA`.
+- The **QRZ.com XML service is always the first source** when credentials
+  are configured (one XML call, so it usually answers first); the free
+  sources follow. When the three values differ (e.g. `JN95EQ - JN95FQ …`)
+  you see it immediately and can decide which one is right for the
+  exchange.
 - The main area shows the worked station's **shortest operator name**
   (printed once) followed by the **US state** once per source, e.g.
-  `Fred - MA MA MA` (a dash `-` marks a source that had no state; the
+  `FRED - MA MA MA` (a dash `-` marks a source that had no state; the
   font shrinks automatically for long text). The HF lookup chain is
-  **QRZCQ.com → HamQTH.com → QRZ.com XML (if configured)**. The
-  **VHF variant** shows the **QRA/maidenhead locator** three times the
-  same way, from **QRZCQ.com → HamQTH.com → QRZ.com(public page)** (plus
-  QRZ XML when configured). When the three values differ (e.g.
-  `JN95EQ - JN95FQ`) you see it immediately and can decide which locator
-  is right for the exchange.
+  **QRZ.com XML → QRZCQ.com → HamQTH.com** when QRZ is configured. The
+  **VHF variant** shows the **QRA/maidenhead locator** the same way, from
+  **QRZ.com XML → QRZCQ.com → HamQTH.com → QRZ.com(public page)** (XML
+  only when configured).
 - **Local computer only:** the app only reacts to packets sent from *this*
   PC (identified by its local interface IPs). Broadcasts from other
   stations on the network are ignored, so only the local operator's

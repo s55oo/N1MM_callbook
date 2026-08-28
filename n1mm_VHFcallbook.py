@@ -4,7 +4,8 @@ A variant of the callbook app that shows the QRA/maidenhead locator
 (e.g. JN76JG) of the worked station instead of the operator name. Sends
 the same N1MM UDP packets through the exact same QRZCQ.com parsing, with
 HamQTH.com and the QRZ.com public page as fallback locator sources. The
-paid QRZ.com XML service can be added as an optional fourth source.
+paid QRZ.com XML service is added as the FIRST source when credentials
+are configured (one XML request, so it usually answers first).
 
 QRZ needs a paid XML subscription (https://www.qrz.com/page/xml_data.html);
 set qrz_username/qrz_password in n1mm_VHFcallbook.cfg to enable it.
@@ -14,13 +15,13 @@ to the servers.
 
 Made by S55OO with AI assistance.
 
-Version: 1.5
+Version: 1.6
 
 Usage:
     python n1mm_VHFcallbook.py [--port 12060] [--config n1mm_VHFcallbook.cfg]
 """
 
-__version__ = "1.5"
+__version__ = "1.6"
 
 import argparse
 import os

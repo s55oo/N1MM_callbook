@@ -18,13 +18,13 @@ fetches for the same callsign and to stay polite to the server.
 
 Made by S55OO with AI assistance.
 
-Version: 2.1
+Version: 2.2
 
 Usage:
     python n1mm_callbook.py [--port 12060] [--config callbook.cfg]
 """
 
-__version__ = "2.1"
+__version__ = "2.2"
 
 import argparse
 import base64
@@ -41,7 +41,7 @@ import urllib.request
 import urllib.parse
 import xml.etree.ElementTree as ET
 
-USER_AGENT = "Mozilla/5.0 N1MM_callbook/2.1"
+USER_AGENT = "Mozilla/5.0 N1MM_callbook/2.2"
 HAMQTH_UA = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
     "(KHTML, like Gecko) Chrome/126.0 Safari/537.36"
@@ -465,14 +465,23 @@ class CallbookApp:
         self.current = None
         self._fetching = False
         self._debounce = None
-        chain = list(self.LOOKUP_CHAIN)
+        # QRZ XML first: it answers via a single XML request, so its slot
+        # usually fills before the page scrapers. Added when credentials
+        # are present, otherwise the free sources run without it.
+        chain = []
         if qrz_username and qrz_password:
             chain.append(
                 functools.partial(
                     qrz_lookup, username=qrz_username, password=qrz_password
                 )
             )
+        chain.extend(self.LOOKUP_CHAIN)
         self.lookup_chain = tuple(chain)
+        # Background lookups push per-source results here; the GUI drains
+        # the queue every 100ms and renders each slot as it arrives.
+        self._inbox = []
+        self._slots = None
+        self._pending_inds = set()
         self.local = set(local_interfaces())
         self.local.add("127.0.0.1")
         self._build()
@@ -484,7 +493,7 @@ class CallbookApp:
         )
         self.thread.start()
         self.root.protocol("WM_DELETE_WINDOW", self.on_close)
-        self.root.after(500, self._flush_pending)
+        self.root.after(100, self._poll_inbox)
 
     def _build(self):
         self.root.title("{}  -  UDP {}  v{}".format(self.APP_TITLE, self.port, __version__))
@@ -551,7 +560,7 @@ class CallbookApp:
             self._show_call(call)
         if self._debounce is not None:
             self.root.after_cancel(self._debounce)
-        self._debounce = self.root.after(1200, self._on_stable, call)
+        self._debounce = self.root.after(300, self._on_stable, call)
 
     def _on_stable(self, call):
         self._debounce = None
@@ -559,60 +568,59 @@ class CallbookApp:
             return
         sources = self.cache.get(call)
         if sources is not None:
-            self._set_from_sources(call, sources)
+            self._slots = None
+            self._render_slots(call, list(sources), set())
         else:
-            self._set_from_sources(call, None, searching=True)
-            self._fetch_async(call)
+            self._start_lookup(call)
 
     def _show_call(self, call):
         self.call_label.configure(text=call)
         sources = self.cache.get(call)
         if sources is not None:
-            self._set_from_sources(call, sources)
+            self._slots = None
+            self._render_slots(call, list(sources), set())
         else:
             # cleared visually while waiting for the debounce / lookup
             self.canvas.configure(bg=COLOR_ACTIVE)
             self.canvas.itemconfigure(self.main_id, text="…")
 
-    def _fetch_async(self, call):
+    def _start_lookup(self, call):
         if self._fetching:
             return
         self._fetching = True
-        threading.Thread(target=self._do_fetch, args=(call,), daemon=True).start()
+        self._slots = [None] * len(self.lookup_chain)
+        self._pending_inds = set(range(len(self.lookup_chain))) if self._slots else set()
+        self._render_slots(call, self._slots, self._pending_inds)
+        threading.Thread(target=self._do_lookup, args=(call,), daemon=True).start()
 
-    def _lookup(self, call):
-        # Run every source in the chain and keep each source's result
-        # separately (one dict per source, None on network error). Returns
-        # (sources, status); status is "api error" only if every source
-        # failed to fetch (an empty response is "no data", not an error).
-        sources = []
-        any_error = False
-        for fn in self.lookup_chain:
+    def _do_lookup(self, call):
+        # Runs in a worker thread; each source result is handed to the GUI
+        # as soon as that source has answered, so the display fills in
+        # source order (QRZ XML first when configured).
+        for i, fn in enumerate(self.lookup_chain):
             res = fn(call)
-            if res is None:
-                any_error = True
-                sources.append(None)
-            else:
-                sources.append(res)
-        if any(s for s in sources if s is not None):
-            return sources, ""
-        return None, "api error" if any_error else ""
+            self._inbox.append((call, i, res))
 
-    def _do_fetch(self, call):
-        sources, status = self._lookup(call)
-        if sources is not None:
-            self.cache.put(call, sources)
-        self._fetching = False
-        self._pending = (call, sources, status)
-
-    def _flush_pending(self):
-        pending = getattr(self, "_pending", None)
-        if pending:
-            call, sources, status = pending
-            self._pending = None
-            if call == self.current:
-                self._set_from_sources(call, sources, status=status)
-        self.root.after(500, self._flush_pending)
+    def _poll_inbox(self):
+        # GUI thread: drains results posted by the worker and renders them.
+        try:
+            while self._inbox:
+                call, i, res = self._inbox.pop(0)
+                if call != self.current:
+                    continue
+                if self._slots is None or i >= len(self._slots):
+                    continue
+                self._slots[i] = res
+                self._pending_inds.discard(i)
+                if not self._pending_inds:
+                    self._fetching = False
+                    # Only cache a complete, error-free set of results.
+                    if not any(s is None for s in self._slots):
+                        self.cache.put(call, list(self._slots))
+                self._render_slots(call, self._slots, self._pending_inds)
+        except Exception:
+            pass
+        self.root.after(100, self._poll_inbox)
 
     def _source_field(self, info, key):
         if not info:
@@ -624,8 +632,9 @@ class CallbookApp:
 
     def _best_name(self, sources):
         # The operator name, printed only once; out of the candidates from
-        # the three sources the shortest one wins. Placeholder entries
-        # (QRZCQ fills unallocated calls with "Unknown OM") count as empty.
+        # the sources that have answered so far the shortest one wins.
+        # Placeholder entries (QRZCQ fills unallocated calls with
+        # "Unknown OM") count as empty.
         names = []
         for s in sources:
             n = self._source_field(s, "name")
@@ -634,44 +643,53 @@ class CallbookApp:
                 names.append(n)
         return min(names, key=len) if names else ""
 
-    def _display_text(self, sources):
-        # e.g. HF (state): "Dave - MA MA MA"  /  VHF (grid): "JN76HD JN76HD JN76HD".
-        vals = [v if v else "-" for v in (self._source_value(s) for s in sources)]
-        line = " ".join(vals)
-        if self.SHOW_NAME:
-            name = self._best_name(sources)
-            if name and any(v != "-" for v in vals):
-                return "{} - {}".format(name, line)
-            if name:
-                return name
-        return line
-
-    def _has_data(self, sources):
-        if any(self._source_value(s) for s in sources):
-            return True
-        return self.SHOW_NAME and bool(self._best_name(sources))
+    def _render_slots(self, call, slots, pending):
+        # Renders the main area at any stage of the lookup. Each slot maps
+        # to one source in chain order; still-fetching slots show "…" so
+        # results appear as they arrive (e.g. "Fred - MA … …" then the
+        # rest fill in). Example final lines:
+        #   HF (state):  "Dave - MA MA MA"  (QRZ first when configured)
+        #   VHF (grid):  "JN76HD JN76HD JN76HD JN76HD"
+        finished = [slots[i] for i in range(len(slots)) if i not in pending]
+        any_data = any(self._source_value(s) for s in finished if s)
+        vals = []
+        for i in range(len(slots)):
+            if i in pending:
+                vals.append("…")
+            else:
+                s = slots[i]
+                v = self._source_value(s) if s else ""
+                vals.append(v if v else "-")
+        all_done = not pending
+        if not finished:
+            text = "…"
+            bg = COLOR_ACTIVE
+        elif any_data:
+            line = " ".join(vals)
+            if self.SHOW_NAME:
+                name = self._best_name(finished)
+                if name and any(v not in ("-", "…") for v in vals):
+                    text = "{} - {}".format(name, line)
+                else:
+                    text = name if name else line
+            else:
+                text = line
+            bg = COLOR_ACTIVE
+        elif not all_done:
+            text = "…"
+            bg = COLOR_ACTIVE
+        else:
+            text = "lookup failed" if all(s is None for s in slots) else "no data"
+            bg = COLOR_IDLE
+        self.canvas.configure(bg=bg)
+        self.canvas.itemconfigure(self.main_id, text=text)
+        self.canvas.itemconfigure(self.main_id, font=self._font_for(len(text)))
 
     def _font_for(self, length):
         for limit, size in FONT_SIZES:
             if length <= limit:
                 return ("Segoe UI", size, "bold")
         return ("Segoe UI", 11, "bold")
-
-    def _set_from_sources(self, call, sources, status="", searching=False):
-        if searching:
-            self.canvas.configure(bg=COLOR_ACTIVE)
-            self.canvas.itemconfigure(self.main_id, text="…")
-        elif sources is not None and self._has_data(sources):
-            self.canvas.configure(bg=COLOR_ACTIVE)
-            text = self._display_text(sources)
-            self.canvas.itemconfigure(self.main_id, text=text)
-            self.canvas.itemconfigure(self.main_id, font=self._font_for(len(text)))
-        elif status == "api error":
-            self.canvas.configure(bg=COLOR_IDLE)
-            self.canvas.itemconfigure(self.main_id, text="lookup failed")
-        else:
-            self.canvas.configure(bg=COLOR_IDLE)
-            self.canvas.itemconfigure(self.main_id, text="no data")
 
     def on_close(self):
         self.stop.set()

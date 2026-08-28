@@ -22,13 +22,13 @@ fetches for the same callsign and to stay polite to the server.
 
 Made by S55OO with AI assistance.
 
-Version: 2.7
+Version: 2.8
 
 Usage:
     python n1mm_callbook.py [--port 12060] [--config callbook.cfg]
 """
 
-__version__ = "2.7"
+__version__ = "2.8"
 
 import argparse
 import base64
@@ -45,7 +45,7 @@ import urllib.request
 import urllib.parse
 import xml.etree.ElementTree as ET
 
-USER_AGENT = "Mozilla/5.0 N1MM_callbook/2.7"
+USER_AGENT = "Mozilla/5.0 N1MM_callbook/2.8"
 HAMQTH_UA = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
     "(KHTML, like Gecko) Chrome/126.0 Safari/537.36"
@@ -473,7 +473,75 @@ def app_dir():
     return os.path.dirname(os.path.abspath(__file__))
 
 
+def load_config(path):
+    """Parse the small ``key = value`` .cfg file.
+
+    Blank lines, ``#`` comments and ``[section]`` headers are ignored.
+    Returns a lower-cased dict; a missing or unreadable file yields ``{}``.
+    """
+    settings = {}
+    try:
+        with open(path, encoding="utf-8") as fh:
+            for line in fh:
+                line = line.strip()
+                if not line or line.startswith(("#", "[")) or "=" not in line:
+                    continue
+                key, _, val = [p.strip() for p in line.partition("=")]
+                settings[key.lower()] = val
+    except OSError:
+        pass
+    return settings
+
+
+def run(app_class, config_name, cache_name, description):
+    """Shared entry point for both apps: parse the CLI args and config
+    file, build ``app_class`` (CallbookApp or a subclass) and run the Tk
+    loop. Only the file names and the ArgumentParser description differ
+    between the HF and VHF variants.
+    """
+    parser = argparse.ArgumentParser(description=description)
+    parser.add_argument("--port", type=int, default=DEFAULT_PORT)
+    parser.add_argument(
+        "--config",
+        default=os.path.join(app_dir(), config_name),
+        help="config file (same folder as the exe by default)",
+    )
+    args = parser.parse_args()
+
+    settings = load_config(args.config)
+
+    def as_int(key, default):
+        try:
+            return int(settings[key])
+        except (KeyError, ValueError):
+            return default
+
+    port = as_int("udp_port", args.port)
+    cache_days = as_int("cache_days", DEFAULT_CACHE_DAYS)
+    cache_file = os.path.join(app_dir(), cache_name)
+    if "cache_file" in settings:
+        cache_file = os.path.abspath(
+            os.path.join(os.path.dirname(args.config), settings["cache_file"])
+        )
+
+    # Optional QRZ.com XML service (paid subscription). Empty credentials
+    # keep QRZ out of the lookup chain.
+    root = tk.Tk()
+    app_class(
+        root,
+        cache_file,
+        port,
+        cache_days,
+        settings.get("qrz_username", ""),
+        settings.get("qrz_password", ""),
+    )
+    root.mainloop()
+
+
 class CallbookApp:
+    # Shown in the title bar. The VHF subclass overrides it with its own
+    # module version (they are released on separate version numbers).
+    VERSION = __version__
     APP_TITLE = "N1MM Callbook"
     # Fields the main area shows per source, joined with "/" into one token
     # per slot. Every source contributes its own token and ALL of them are
@@ -493,7 +561,6 @@ class CallbookApp:
         self.port = port
         self.cache = Cache(cache_path, cache_days)
         self.current = None
-        self._fetching = False
         self._debounce = None
         # QRZ XML takes slot 0 (shown left-most) when credentials are
         # present, otherwise the free sources run without it. All sources
@@ -527,7 +594,7 @@ class CallbookApp:
         self.root.after(100, self._poll_inbox)
 
     def _build(self):
-        self.root.title("{}  -  UDP {}  v{}".format(self.APP_TITLE, self.port, __version__))
+        self.root.title("{}  -  UDP {}  v{}".format(self.APP_TITLE, self.port, self.VERSION))
         self.root.attributes("-topmost", True)
         frame = tk.Frame(self.root, padx=6, pady=4)
         frame.pack()
@@ -617,21 +684,22 @@ class CallbookApp:
             self.canvas.itemconfigure(self.main_id, text="…")
 
     def _start_lookup(self, call):
-        if self._fetching:
-            return
-        self._fetching = True
+        # No "already fetching" guard: if the operator retypes the call
+        # while a lookup is in flight, we just start a fresh one. The old
+        # threads still finish but their results are dropped by the
+        # `call != self.current` check in _poll_inbox.
         self._slots = [None] * len(self.lookup_chain)
-        self._pending_inds = set(range(len(self.lookup_chain))) if self._slots else set()
+        self._pending_inds = set(range(len(self.lookup_chain)))
         self._render_slots(call, self._slots, self._pending_inds)
-        threading.Thread(target=self._do_lookup, args=(call,), daemon=True).start()
+        self._do_lookup(call)
 
     def _do_lookup(self, call):
         # Fires every source at once (one thread each) so a slow source
-        # never holds up a fast one. Each result is posted to the GUI the
-        # moment that source answers; the slot index is kept, so the
-        # display still reads in chain order (QRZ XML, QRZCQ, HamQTH, ...)
-        # - it just fills in as fast as each source can reply instead of
-        # waiting for the whole chain.
+        # never holds up a fast one; returns immediately. Each result is
+        # posted to the GUI the moment that source answers; the slot index
+        # is kept, so the display still reads in chain order (QRZ XML,
+        # QRZCQ, HamQTH, ...) - it just fills in as fast as each source can
+        # reply instead of waiting for the whole chain.
         def run(i, fn):
             try:
                 res = fn(call)
@@ -654,7 +722,6 @@ class CallbookApp:
                 self._slots[i] = res
                 self._pending_inds.discard(i)
                 if not self._pending_inds:
-                    self._fetching = False
                     # Only cache a complete, error-free set of results.
                     if not any(s is None for s in self._slots):
                         self.cache.put(call, list(self._slots))
@@ -791,56 +858,12 @@ class CallbookApp:
 
 
 def main():
-    parser = argparse.ArgumentParser(description="N1MM Logger+ contest callbook")
-    parser.add_argument("--port", type=int, default=DEFAULT_PORT)
-    parser.add_argument(
-        "--config",
-        default=os.path.join(app_dir(), "callbook.cfg"),
-        help="config file (same folder as the exe by default)",
+    run(
+        CallbookApp,
+        "callbook.cfg",
+        "callbook_cache.json",
+        "N1MM Logger+ contest callbook",
     )
-    args = parser.parse_args()
-
-    settings = {}
-    if os.path.exists(args.config):
-        try:
-            with open(args.config, encoding="utf-8") as fh:
-                for line in fh:
-                    line = line.strip()
-                    if not line or line.startswith(("#", "[")):
-                        continue
-                    if "=" not in line:
-                        continue
-                    key, _, val = [p.strip() for p in line.partition("=")]
-                    settings[key.lower()] = val
-        except OSError:
-            pass
-
-    port = args.port
-    if "udp_port" in settings:
-        try:
-            port = int(settings["udp_port"])
-        except ValueError:
-            pass
-    cache_days = DEFAULT_CACHE_DAYS
-    if "cache_days" in settings:
-        try:
-            cache_days = int(settings["cache_days"])
-        except ValueError:
-            pass
-    cache_file = os.path.join(app_dir(), "callbook_cache.json")
-    if "cache_file" in settings:
-        cache_file = os.path.abspath(
-            os.path.join(os.path.dirname(args.config), settings["cache_file"])
-        )
-
-    # Optional QRZ.com XML service (paid subscription). Empty credentials
-    # keep QRZ out of the lookup chain.
-    qrz_username = settings.get("qrz_username", "")
-    qrz_password = settings.get("qrz_password", "")
-
-    root = tk.Tk()
-    CallbookApp(root, cache_file, port, cache_days, qrz_username, qrz_password)
-    root.mainloop()
 
 
 if __name__ == "__main__":

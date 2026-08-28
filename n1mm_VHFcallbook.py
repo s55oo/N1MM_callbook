@@ -2,105 +2,51 @@
 """N1MM Logger+ VHF Locator lookup.
 
 A variant of the callbook app that shows the QRA/maidenhead locator
-(e.g. JN76JG) of the worked station instead of the operator name. Sends
-the same N1MM UDP packets through the exact same QRZCQ.com parsing, with
-HamQTH.com and the QRZ.com public page as fallback locator sources. The
-paid QRZ.com XML service is added as the first slot when credentials are
-configured. All sources are queried in parallel, so each locator slot
-fills as soon as that source answers.
+(e.g. JN76JG) of the worked station instead of the operator name. It
+reuses the whole engine from ``n1mm_callbook`` - the same N1MM UDP
+packets, the same QRZCQ.com / HamQTH.com / QRZ.com parsing, the same
+parallel lookup and cache - and only overrides which field is shown.
 
-QRZ needs a paid XML subscription (https://www.qrz.com/page/xml_data.html);
-set qrz_username/qrz_password in n1mm_VHFcallbook.cfg to enable it.
+The paid QRZ.com XML service is added as the first slot when credentials
+are configured (set qrz_username/qrz_password in n1mm_VHFcallbook.cfg;
+needs a QRZ XML subscription, https://www.qrz.com/page/xml_data.html).
 
-Lookups are cached locally in n1mm_VHFcallbook_cache.json to stay polite
-to the servers.
+Lookups are cached locally in n1mm_VHFcallbook_cache.json.
 
 Made by S55OO with AI assistance.
 
-Version: 1.11
+Version: 1.12
 
 Usage:
     python n1mm_VHFcallbook.py [--port 12060] [--config n1mm_VHFcallbook.cfg]
 """
 
-__version__ = "1.11"
-
-import argparse
-import os
-import sys
-import tkinter as tk
+__version__ = "1.12"
 
 import n1mm_callbook as cb
 
-CONFIG_NAME = "n1mm_VHFcallbook.cfg"
-CACHE_NAME = "n1mm_VHFcallbook_cache.json"
-
 
 class VHFApp(cb.CallbookApp):
+    VERSION = __version__
     APP_TITLE = "N1MM VHF Callbook"
-    # Show all three locator values side by side (e.g. "JN76HD JN76HD JN76HD")
-    # so a wrong one stands out; each source contributes its own value.
-    # Locator only - no state/CQ zone/name here.
+    # Locator only - no state / CQ zone / name. Each source's grid is
+    # shown side by side (e.g. "JN76HD JN76HD JN76HD") so a wrong one
+    # stands out.
     SLOT_FIELDS = ("grid",)
     SHOW_NAME = False
-    # Slot order: QRZCQ, HamQTH's Grid: row, then the locator computed from
-    # the coordinates on the public QRZ.com page. The paid QRZ XML service
-    # is prepended automatically when credentials are configured. All slots
-    # are fetched in parallel and render as each source replies.
+    # Slot order: QRZCQ, HamQTH's "Grid:" row, then the locator computed
+    # from the coordinates on the public QRZ.com page. The paid QRZ XML
+    # service is prepended automatically when credentials are configured.
     LOOKUP_CHAIN = (cb.qrzcq_lookup, cb.hamqth_lookup, cb.qrzdb_lookup)
 
 
 def main():
-    parser = argparse.ArgumentParser(description="N1MM Logger+ VHF locator lookup")
-    parser.add_argument("--port", type=int, default=cb.DEFAULT_PORT)
-    parser.add_argument(
-        "--config",
-        default=os.path.join(cb.app_dir(), CONFIG_NAME),
-        help="config file (same folder as the exe by default)",
+    cb.run(
+        VHFApp,
+        "n1mm_VHFcallbook.cfg",
+        "n1mm_VHFcallbook_cache.json",
+        "N1MM Logger+ VHF locator lookup",
     )
-    args = parser.parse_args()
-
-    settings = {}
-    if os.path.exists(args.config):
-        try:
-            with open(args.config, encoding="utf-8") as fh:
-                for line in fh:
-                    line = line.strip()
-                    if not line or line.startswith(("#", "[")):
-                        continue
-                    if "=" not in line:
-                        continue
-                    key, _, val = [p.strip() for p in line.partition("=")]
-                    settings[key.lower()] = val
-        except OSError:
-            pass
-
-    port = args.port
-    if "udp_port" in settings:
-        try:
-            port = int(settings["udp_port"])
-        except ValueError:
-            pass
-    cache_days = cb.DEFAULT_CACHE_DAYS
-    if "cache_days" in settings:
-        try:
-            cache_days = int(settings["cache_days"])
-        except ValueError:
-            pass
-    cache_file = os.path.join(cb.app_dir(), CACHE_NAME)
-    if "cache_file" in settings:
-        cache_file = os.path.abspath(
-            os.path.join(os.path.dirname(args.config), settings["cache_file"])
-        )
-
-    # Optional QRZ.com XML service (paid subscription). Empty credentials
-    # keep QRZ out of the lookup chain.
-    qrz_username = settings.get("qrz_username", "")
-    qrz_password = settings.get("qrz_password", "")
-
-    root = tk.Tk()
-    VHFApp(root, cache_file, port, cache_days, qrz_username, qrz_password)
-    root.mainloop()
 
 
 if __name__ == "__main__":

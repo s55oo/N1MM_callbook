@@ -1,6 +1,6 @@
 # N1MM Callbook – N1MM Logger+ Contest Callbook
 
-> **Version:** 2.7 (HF) / 1.11 (VHF) · Made by **S55OO** with AI assistance.
+> **Version:** 2.8 (HF) / 1.12 (VHF) · Made by **S55OO** with AI assistance.
 > · **Public domain** – see [LICENSE](LICENSE).
 
 A compact always-on-top window that listens to the N1MM Logger+ external
@@ -234,6 +234,11 @@ dist\                – PyInstaller output
 
 ## 7. Changelog
 
+- **2.8 (HF) / 1.12 (VHF)** – fixed a hang where retyping a callsign while
+  a lookup was still running could stop all further lookups until restart.
+  Internal: the two apps now share one `run()`/`load_config()` entry point
+  (`n1mm_VHFcallbook.py` is a ~30-line subclass); the VHF title bar now
+  shows its own version instead of the HF one.
 - **2.7 (HF) / 1.11 (VHF)** – the **?** icon now opens the project page on
   GitHub instead of QRZCQ.com; released into the **public domain** (The
   Unlicense).

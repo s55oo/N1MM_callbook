@@ -15,13 +15,13 @@ Lookups are cached locally in n1mm_VHFcallbook_cache.json.
 
 Made by S55OO with AI assistance.
 
-Version: 1.16
+Version: 1.17
 
 Usage:
     python n1mm_VHFcallbook.py [--port 12060] [--config n1mm_VHFcallbook.cfg]
 """
 
-__version__ = "1.16"
+__version__ = "1.17"
 
 import n1mm_callbook as cb
 
@@ -35,7 +35,6 @@ class VHFApp(cb.CallbookApp):
     SLOT_FIELDS = ("grid",)
     SLOT_SEP = " - "
     SHOW_NAME = False
-    USE_CTY = False  # cty.dat has no grid; VHF shows only locators
     # Slot order: QRZCQ, HamQTH's "Grid:" row, then the locator computed
     # from the coordinates on the public QRZ.com page. The paid QRZ XML
     # service is prepended automatically when credentials are configured.

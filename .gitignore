@@ -5,11 +5,6 @@ n1mm_VHFcallbook.cfg
 *_cache.json
 *_window.json
 qrz_session.json
-*.tmp
 dist/
 build/
 *.spec.bak
-
-# cty.dat is auto-refreshed at runtime; keep the tracked copy as the
-# bundled fallback and don't commit local downloads over it
-# (run:  git update-index --skip-worktree cty.dat  if it keeps re-appearing)

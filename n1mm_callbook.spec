@@ -5,7 +5,7 @@ a = Analysis(
     ['n1mm_callbook.py'],
     pathex=[],
     binaries=[],
-    datas=[('cty.dat', '.')],
+    datas=[],
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},

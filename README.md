@@ -1,6 +1,6 @@
 # N1MM Callbook – N1MM Logger+ Contest Callbook
 
-> **Version:** 2.13 (HF) / 1.17 (VHF) · Made by **S55OO** with AI assistance.
+> **Version:** 2.14 (HF) / 1.18 (VHF) / 1.0 (VHFCtest4WIN) · Made by **S55OO** with AI assistance.
 > · **Public domain** – see [LICENSE](LICENSE).
 
 A compact always-on-top window that listens to the N1MM Logger+ external
@@ -72,6 +72,39 @@ topmost Tkinter window with a colored canvas and a help icon.
 > the `LookupInfo`/`ContactInfo` packet automatically. `RadioInfo` only
 > carries the local operator's own call and is deliberately ignored.
 
+### VHFCtest4WIN – `VHFctest4WinCallbook`
+
+**VHFCtest4WIN** (S52AA's VHF contest logger) does not send N1MM
+`LookupInfo` packets, so with the plain VHF callbook it only reacts once a
+QSO is *logged*. **`VHFctest4WinCallbook`** is a dedicated variant that
+instead listens to VHFCtest4WIN's **multi-op sharing broadcast** (UDP
+**6767**), which carries the callsign **as it is typed** – so the locator
+lookup runs *before* the QSO is logged and a wrong QRA locator can be
+caught while it is still editable. Same three locator sources shown side
+by side, same green "all agree" signal.
+
+- Nothing to switch on in VHFCtest4WIN – it already broadcasts its entry
+  field on 6767 as part of normal network sharing.
+- **Port 6767 / UAC.** VHFCtest4WIN keeps 6767 open with an exclusive
+  lock, so the only way to read the broadcast while it runs is a raw
+  capture socket, which needs elevation. When VHFCtest4WIN is already up,
+  `VHFctest4WinCallbook` **relaunches itself elevated** – you just get one
+  **UAC prompt, click Yes**. Decline it and the window still opens and
+  tells you what to do. No prompt when VHFCtest4WIN is not running yet.
+- Do **not** start `VHFctest4WinCallbook` before VHFCtest4WIN on the same
+  PC: it would take 6767 and VHFCtest4WIN's own network sharing then
+  breaks. Start VHFCtest4WIN first, then `VHFctest4WinCallbook`.
+- **Multi-op:** VHFCtest4WIN broadcasts to the whole network, so every
+  PC sees every operator's typing. `VHFctest4WinCallbook` ignores
+  everything except **its own PC's** VHFCtest4WIN, so each position's
+  window follows only that operator (same local-computer-only rule as the
+  N1MM feed).
+- On another PC on the multi-op network, an ordinary listener works with
+  no prompt.
+- The same feed is also available as **`vhfctest_share=yes`** in
+  `n1mm_VHFcallbook.cfg` if you would rather not run a second window
+  (subject to the same elevation rule).
+
 ---
 
 ## 2. Running
@@ -91,11 +124,21 @@ VHF locator variant:
    or:  run:  n1mm_VHFcallbook.exe        (standalone executable)
 ```
 
+VHFCtest4WIN pre-log locator check (see section 1):
+
+```
+   or:  run:  pythonw VHFctest4WinCallbook.py  (from source, no window)
+   or:  run:  VHFctest4WinCallbook.exe         (standalone; prompts for
+                                                UAC when VHFCtest4WIN is
+                                                already running)
+```
+
 Arguments:
 
 ```
 python n1mm_callbook.py [--port 12060] [--config callbook.cfg]
 python n1mm_VHFcallbook.py [--port 12060] [--config n1mm_VHFcallbook.cfg]
+python VHFctest4WinCallbook.py [--config VHFctest4WinCallbook.cfg]
 ```
 
 - `--port` – UDP port (default 12060).
@@ -183,6 +226,10 @@ cache_persist=yes                        (no = in-memory only, never writes)
 # Optional - paid QRZ.com XML service (extra state / locator slot):
 # qrz_username=S55OO
 # qrz_password=YOUR_QRZ_PASSWORD
+
+# VHF only - VHFCtest4WIN pre-log callsign feed (see section 1):
+# vhfctest_share=no                      (yes = also listen on UDP 6767)
+# vhfctest_port=6767
 ```
 
 - Each `.cfg` and its matching `cache_file` are read/written from the same
@@ -213,6 +260,10 @@ copy /Y dist\n1mm_callbook.exe n1mm_callbook.exe
 REM VHF locator variant:
 python -m PyInstaller --onefile --windowed --name n1mm_VHFcallbook --manifest manifest.xml n1mm_VHFcallbook.py
 copy /Y dist\n1mm_VHFcallbook.exe n1mm_VHFcallbook.exe
+
+REM VHFCtest4WIN pre-log locator check:
+python -m PyInstaller --onefile --windowed --name VHFctest4WinCallbook --manifest manifest.xml VHFctest4WinCallbook.py
+copy /Y dist\VHFctest4WinCallbook.exe VHFctest4WinCallbook.exe
 ```
 
 `manifest.xml` makes the windows use modern common controls. The results are
@@ -228,17 +279,22 @@ n1mm_callbook.py     – main application, HF callbook (source code)
 n1mm_callbook.exe    – HF standalone executable (built, no Python needed)
 n1mm_VHFcallbook.py  – VHF locator variant (source code)
 n1mm_VHFcallbook.exe – VHF standalone executable (built, no Python needed)
+VHFctest4WinCallbook.py  – VHFCtest4WIN pre-log locator check (source code)
+VHFctest4WinCallbook.exe – VHFCtest4WIN variant, standalone executable
 callbook.cfg.template     – HF config template (copy to callbook.cfg)
 callbook.cfg              – HF config (gitignored; may hold QRZ login in plain text)
 callbook_cache.json       – HF local lookup cache (auto-created, gitignored)
 n1mm_VHFcallbook.cfg.template – VHF config template
 n1mm_VHFcallbook.cfg      – VHF config (gitignored; may hold QRZ login in plain text)
 n1mm_VHFcallbook_cache.json – VHF local lookup cache (auto-created, gitignored)
-callbook_window.json / n1mm_VHFcallbook_window.json – last window position (auto, gitignored)
+VHFctest4WinCallbook.cfg.template – VHFCtest4WIN variant config template
+VHFctest4WinCallbook.cfg  – VHFCtest4WIN variant config (gitignored)
+VHFctest4WinCallbook_cache.json – VHFCtest4WIN variant lookup cache (auto, gitignored)
+*_window.json        – last window position per app (auto, gitignored)
 qrz_session.json     – cached QRZ XML session key (auto-created, gitignored)
 Callbook.bat         – source launcher (no console)
 manifest.xml         – PyInstaller manifest (common controls)
-n1mm_callbook.spec, n1mm_VHFcallbook.spec – PyInstaller build settings
+n1mm_callbook.spec, n1mm_VHFcallbook.spec, VHFctest4WinCallbook.spec – PyInstaller build settings
 dist\                – PyInstaller output
 CLAUDE.md            – developer notes (architecture, gotchas, release steps)
 dev\test_render.py   – headless display-logic tests (no network)
@@ -254,6 +310,17 @@ dev\bench_latency.py – lookup-latency benchmark
 
 ## 7. Changelog
 
+- **2.14 (HF) / 1.18 (VHF) / new: VHFctest4WinCallbook 1.0** – new
+  **`VHFctest4WinCallbook`** app: the side-by-side locator check driven by
+  **VHFCtest4WIN**. It listens to VHFCtest4WIN's multi-op sharing
+  broadcast (UDP 6767), which carries the callsign **as it is typed**, so
+  the locator lookup runs *before* the QSO is logged and a wrong QRA
+  locator can be caught while it is still editable. When VHFCtest4WIN is
+  already running it holds UDP 6767 exclusively, so the app **relaunches
+  itself elevated** (one UAC prompt) and reads the broadcast with a raw
+  capture socket; in a multi-op it follows only its own PC's VHFCtest4WIN.
+  The same feed is also available in the plain VHF callbook via
+  `vhfctest_share=yes`. HF unchanged (shared-engine plumbing only).
 - **2.13 (HF) / 1.17 (VHF)** – removed the offline `cty.dat` slot added in
   2.12: the call-area zone guesses weren't useful enough in practice.
   Back to the three network sources; the green "all agree" check is

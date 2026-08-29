@@ -148,6 +148,48 @@ def main():
     ok &= check("cache: persist=off still de-dupes",
                 c.get("K1TTT") is not None, True)
 
+    # VHFCtest4WIN <V4W> packet parsing
+    v4w_full = (
+        b"<V4W><QSOINLOG><CALLSIGN>S56M</CALLSIGN>"
+        b"<CALLSIGN_COMPLETE>TRUE</CALLSIGN_COMPLETE><BAND>144 MHz</BAND>"
+        b"<QSONUMBER></QSONUMBER><WWL>JN76GB</WWL>"
+        b"<WWL_COMPLETE>TRUE</WWL_COMPLETE></QSOINLOG></V4W>"
+    )
+    ok &= check("v4w: callsign extracted", cb.packet_v4w(v4w_full), "S56M")
+    ok &= check("v4w: partial call as typed",
+                cb.packet_v4w(b"<V4W><QSOINLOG><CALLSIGN>s51a</CALLSIGN>"
+                              b"<WWL>JN</WWL></QSOINLOG></V4W>"), "S51A")
+    ok &= check("v4w: cleared field -> None",
+                cb.packet_v4w(b"<V4W><QSOINLOG><CALLSIGN></CALLSIGN>"
+                              b"<WWL></WWL></QSOINLOG></V4W>"), None)
+    ok &= check("v4w: N1MM contactinfo is not a v4w packet",
+                cb.packet_v4w(b"<contactinfo><call>S51A</call></contactinfo>"), None)
+    ok &= check("v4w: junk -> None", cb.packet_v4w(b"not xml at all"), None)
+
+    # raw IPv4 packet -> UDP payload (SIO_RCVALL fallback path)
+    def ip_udp(dport, payload, sport=6767):
+        import socket as _s
+        udp = (sport.to_bytes(2, "big") + dport.to_bytes(2, "big")
+               + (8 + len(payload)).to_bytes(2, "big") + b"\x00\x00" + payload)
+        ip = (b"\x45\x00" + (20 + len(udp)).to_bytes(2, "big")
+              + b"\x00\x00\x00\x00\x40\x11\x00\x00"
+              + _s.inet_aton("10.147.17.61") + _s.inet_aton("10.147.17.255"))
+        return ip + udp
+    ok &= check("raw: payload pulled out for matching port",
+                cb._udp_payload(ip_udp(6767, v4w_full), 6767), v4w_full)
+    ok &= check("raw: wrong port -> None",
+                cb._udp_payload(ip_udp(12060, v4w_full), 6767), None)
+
+    # _on_v4w_call: multi-op source filter - only this PC's VHFCtest4WIN
+    fake = cb.CallbookApp.__new__(cb.CallbookApp)
+    fake._v4w_inbox = []
+    fake.local = {"192.168.1.5", "127.0.0.1"}
+    fake._on_v4w_call("S51A", "192.168.1.5")   # this PC
+    fake._on_v4w_call("OM3KII", "192.168.1.9")  # another op on the subnet
+    fake._on_v4w_call("S59ABC", "127.0.0.1")   # this PC, loopback broadcast
+    ok &= check("v4w: only local-source callsigns queued",
+                fake._v4w_inbox, ["S51A", "S59ABC"])
+
     # geometry round-trip
     m = cb.CallbookApp._GEOM_RE.match("344x117+321+123")
     ok &= check("geometry regex keeps position only",

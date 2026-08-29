@@ -22,13 +22,13 @@ fetches for the same callsign and to stay polite to the server.
 
 Made by S55OO with AI assistance.
 
-Version: 2.13
+Version: 2.14
 
 Usage:
     python n1mm_callbook.py [--port 12060] [--config callbook.cfg]
 """
 
-__version__ = "2.13"
+__version__ = "2.14"
 
 import argparse
 import base64
@@ -38,6 +38,7 @@ import http.client
 import json
 import os
 import re
+import select
 import socket
 import sys
 import threading
@@ -46,7 +47,7 @@ import tkinter as tk
 import urllib.parse
 import xml.etree.ElementTree as ET
 
-USER_AGENT = "Mozilla/5.0 N1MM_callbook/2.13"
+USER_AGENT = "Mozilla/5.0 N1MM_callbook/2.14"
 HAMQTH_UA = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
     "(KHTML, like Gecko) Chrome/126.0 Safari/537.36"
@@ -107,6 +108,34 @@ def packet_callsign(data):
             callsign = el.text.strip()
             return callsign.upper() or None
     return callsign.upper() or None
+
+
+def packet_v4w(data):
+    """Extract the callsign from a VHFCtest4WIN multi-op sharing packet.
+
+    VHFCtest4WIN broadcasts the entry-field contents to UDP port 6767 as
+    it is typed, wrapped as ``<V4W><QSOINLOG><CALLSIGN>..</CALLSIGN>..``.
+    Unlike N1MM's LookupInfo/ContactInfo this arrives *before* the QSO is
+    logged (one packet per keystroke), so the callbook can flag a bad
+    locator while it can still be fixed. Returns the callsign in upper
+    case, or None when the packet is not a ``<V4W>`` packet or carries an
+    empty ``<CALLSIGN>`` (VHFCtest4WIN sends an empty one when the field
+    is cleared).
+    """
+    raw = data.decode("utf-8", errors="replace")
+    start = raw.find("<")
+    if start < 0:
+        return None
+    try:
+        root = ET.fromstring(raw[start:])
+    except ET.ParseError:
+        return None
+    if root.tag.lower() != "v4w":
+        return None
+    for el in root.iter():
+        if el.tag.lower() == "callsign":
+            return (el.text or "").strip().upper() or None
+    return None
 
 
 def normalize_call(call):
@@ -267,6 +296,129 @@ def listener_loop(bind_ip, port, on_packet, stop):
         except OSError:
             break
         on_packet(addr[0], data)
+    try:
+        sock.close()
+    except OSError:
+        pass
+
+
+def _udp_payload(pkt, want_port):
+    """Return the UDP payload of a raw IPv4 packet whose destination port
+    is *want_port*, or None. ``pkt`` is a full IPv4 datagram as delivered
+    by a ``SOCK_RAW`` / ``IPPROTO_IP`` socket on Windows (IP header
+    included)."""
+    if len(pkt) < 28:
+        return None
+    ihl = (pkt[0] & 0x0F) * 4
+    if ihl < 20 or pkt[9] != 17 or len(pkt) < ihl + 8:  # 17 = UDP
+        return None
+    if ((pkt[ihl + 2] << 8) | pkt[ihl + 3]) != want_port:
+        return None
+    ulen = (pkt[ihl + 4] << 8) | pkt[ihl + 5]
+    end = ihl + ulen if 8 <= ulen <= len(pkt) - ihl else len(pkt)
+    return pkt[ihl + 8:end]
+
+
+def _v4w_raw_listen(port, on_call, stop):
+    """Fallback capture for when the UDP port cannot be bound.
+
+    VHFCtest4WIN binds port 6767 with ``SO_EXCLUSIVEADDRUSE``, so when it
+    is already running no second socket can bind that port - not even on a
+    specific address or 127.0.0.1. A raw ``SIO_RCVALL`` socket reads the
+    broadcasts below the socket layer instead; on Windows it needs the app
+    to be running as Administrator. Returns True once it has at least one
+    capture socket, False if raw sockets are unavailable (not Windows, or
+    the app is not elevated) so the caller can surface a hint."""
+    if not hasattr(socket, "SIO_RCVALL"):
+        return False
+    socks = []
+    for ip in list(local_interfaces()) + ["127.0.0.1"]:
+        try:
+            r = socket.socket(socket.AF_INET, socket.SOCK_RAW, socket.IPPROTO_IP)
+            r.bind((ip, 0))
+            r.setsockopt(socket.IPPROTO_IP, socket.IP_HDRINCL, 1)
+            r.ioctl(socket.SIO_RCVALL, socket.RCVALL_ON)
+            r.setblocking(False)
+            socks.append(r)
+        except OSError:
+            pass
+    if not socks:
+        return False
+    try:
+        while not stop.is_set():
+            try:
+                ready, _, _ = select.select(socks, [], [], 0.3)
+            except OSError:
+                break
+            for r in ready:
+                try:
+                    pkt, _ = r.recvfrom(65535)
+                except OSError:
+                    continue
+                payload = _udp_payload(pkt, port)
+                if payload is None:
+                    continue
+                call = packet_v4w(payload)
+                if call:
+                    on_call(call, socket.inet_ntoa(pkt[12:16]))
+    finally:
+        for r in socks:
+            try:
+                r.ioctl(socket.SIO_RCVALL, socket.RCVALL_OFF)
+            except OSError:
+                pass
+            try:
+                r.close()
+            except OSError:
+                pass
+    return True
+
+
+def v4w_listener_loop(port, on_call, stop, on_status=None):
+    """Listen for VHFCtest4WIN ``<V4W>`` callsign broadcasts on *port*.
+
+    Tries a normal UDP listener first (works when the callbook is started
+    before VHFCtest4WIN, or VHFCtest4WIN is not using the port); if the
+    bind fails because VHFCtest4WIN already holds the port exclusively,
+    falls back to a raw capture socket. Every callsign found is passed to
+    ``on_call(callsign, src_ip)`` - the caller filters on ``src_ip`` so a
+    multi-op only reacts to its own PC. If neither path works (VHFCtest4WIN
+    holds the port and the app is not elevated) *on_status* is called once
+    with a short hint. Both callbacks must be safe to call from this
+    thread."""
+    sock = None
+    try:
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+        sock.bind(("", port))
+        sock.settimeout(0.3)
+    except OSError:
+        if sock is not None:
+            try:
+                sock.close()
+            except OSError:
+                pass
+        sock = None
+
+    if sock is None:
+        if not _v4w_raw_listen(port, on_call, stop) and on_status:
+            on_status(
+                "VHFCtest4WIN holds UDP {} - run this app as Administrator, "
+                "or start it before VHFCtest4WIN".format(port)
+            )
+        return
+
+    while not stop.is_set():
+        try:
+            data, addr = sock.recvfrom(65535)
+        except socket.timeout:
+            continue
+        except OSError:
+            break
+        call = packet_v4w(data)
+        if call:
+            on_call(call, addr[0])
     try:
         sock.close()
     except OSError:
@@ -660,11 +812,13 @@ def load_config(path):
     return settings
 
 
-def run(app_class, config_name, cache_name, description):
-    """Shared entry point for both apps: parse the CLI args and config
-    file, build ``app_class`` (CallbookApp or a subclass) and run the Tk
-    loop. Only the file names and the ArgumentParser description differ
-    between the HF and VHF variants.
+def run(app_class, config_name, cache_name, description, always_vhfctest=False):
+    """Shared entry point for the apps: parse the CLI args and config file,
+    build ``app_class`` (CallbookApp or a subclass) and run the Tk loop.
+    Only the file names and the ArgumentParser description differ between
+    the HF and VHF variants. ``always_vhfctest=True`` (the dedicated
+    VHFctest4WinCallbook app) turns the VHFCtest4WIN 6767 feed on
+    unconditionally instead of gating it on ``vhfctest_share``.
     """
     parser = argparse.ArgumentParser(description=description)
     parser.add_argument("--port", type=int, default=DEFAULT_PORT)
@@ -673,6 +827,9 @@ def run(app_class, config_name, cache_name, description):
         default=os.path.join(app_dir(), config_name),
         help="config file (same folder as the exe by default)",
     )
+    # Set by an elevated self-relaunch (VHFctest4WinCallbook); only used to
+    # stop that relaunch from looping. Hidden from --help.
+    parser.add_argument("--elevated", action="store_true", help=argparse.SUPPRESS)
     args = parser.parse_args()
 
     settings = load_config(args.config)
@@ -694,6 +851,16 @@ def run(app_class, config_name, cache_name, description):
             os.path.join(os.path.dirname(args.config), settings["cache_file"])
         )
 
+    # VHFCtest4WIN pre-log callsign feed (VHFctest4WinCallbook, or the VHF
+    # variant with vhfctest_share=yes). The port matches VHFCtest4WIN's
+    # multi-op sharing port (6767).
+    vhfctest_port = 0
+    share = settings.get("vhfctest_share", "no").strip().lower() in (
+        "yes", "true", "1", "on",
+    )
+    if always_vhfctest or (getattr(app_class, "VHFCTEST_CAPABLE", False) and share):
+        vhfctest_port = as_int("vhfctest_port", 6767)
+
     # Side files live next to the cache: the remembered window position
     # and the QRZ XML session key (shared by both apps - same QRZ account).
     data_dir = os.path.dirname(cache_file)
@@ -712,6 +879,7 @@ def run(app_class, config_name, cache_name, description):
         settings.get("qrz_password", ""),
         win_file,
         cache_persist,
+        vhfctest_port,
     )
     root.mainloop()
 
@@ -737,11 +905,16 @@ class CallbookApp:
     # Lookup sources run in order; every source's value is kept separately.
     # Variants can add more sources.
     LOOKUP_CHAIN = (qrzcq_lookup, hamqth_lookup)
+    # Whether this variant can take the optional VHFCtest4WIN pre-log
+    # callsign feed (see v4w_listener_loop). VHF only.
+    VHFCTEST_CAPABLE = False
 
     def __init__(self, root, cache_path, port, cache_days, qrz_username="",
-                 qrz_password="", win_file=None, cache_persist=True):
+                 qrz_password="", win_file=None, cache_persist=True,
+                 vhfctest_port=0):
         self.root = root
         self.port = port
+        self.vhfctest_port = vhfctest_port
         self.cache = Cache(cache_path, cache_days, cache_persist)
         self.win_file = win_file
         self.current = None
@@ -762,6 +935,11 @@ class CallbookApp:
         # Background lookups push per-source results here; the GUI drains
         # the queue every 100ms and renders each slot as it arrives.
         self._inbox = []
+        # VHFCtest4WIN listener thread appends the callsign being typed
+        # here; drained on the GUI thread by _poll_inbox (same cross-thread
+        # hand-off pattern as _inbox - never touch Tk from that thread).
+        self._v4w_inbox = []
+        self._v4w_status = None  # one-shot hint text from the v4w listener
         self._slots = None
         self._pending_inds = set()
         self.local = set(local_interfaces())
@@ -775,6 +953,17 @@ class CallbookApp:
             daemon=True,
         )
         self.thread.start()
+        # Optional second feed: VHFCtest4WIN shares the callsign being
+        # typed (before the QSO is logged) on its own UDP port.
+        self.v4w_thread = None
+        if self.vhfctest_port:
+            self.v4w_thread = threading.Thread(
+                target=v4w_listener_loop,
+                args=(self.vhfctest_port, self._on_v4w_call, self.stop,
+                      self._on_v4w_status),
+                daemon=True,
+            )
+            self.v4w_thread.start()
         self.root.protocol("WM_DELETE_WINDOW", self.on_close)
         self.root.after(100, self._poll_inbox)
 
@@ -859,8 +1048,28 @@ class CallbookApp:
         if src not in self.local:
             return
         call = packet_callsign(data)
-        if not call:
+        if call:
+            self._handle_call(call)
+
+    def _on_v4w_call(self, call, src):
+        # Runs on the VHFCtest4WIN listener thread. VHFCtest4WIN broadcasts
+        # to the whole multi-op subnet, so ignore datagrams from other
+        # PCs - this callbook only follows its own operator's entry field
+        # (same local-computer-only rule as on_packet). Then just queue the
+        # callsign (a plain list append is safe); _poll_inbox picks it up
+        # on the GUI thread.
+        if src not in self.local:
             return
+        self._v4w_inbox.append(call)
+
+    def _on_v4w_status(self, msg):
+        # Listener thread: stash a one-off hint (e.g. "run as Administrator")
+        # for _poll_inbox to show in the footer on the GUI thread.
+        self._v4w_status = msg
+
+    def _handle_call(self, call):
+        # Shared path for a worked callsign from any feed (the N1MM
+        # LookupInfo/ContactInfo packet, or a VHFCtest4WIN <V4W> broadcast).
         call = normalize_call(call)
         if not call or call.lower().startswith("test"):
             return
@@ -924,6 +1133,20 @@ class CallbookApp:
 
     def _poll_inbox(self):
         # GUI thread: drains results posted by the worker and renders them.
+        # First fold in any callsign the VHFCtest4WIN listener queued - only
+        # the most recent matters (it fires once per keystroke), and
+        # _handle_call debounces the lookup from there.
+        if self._v4w_inbox:
+            latest = self._v4w_inbox[-1]
+            self._v4w_inbox.clear()
+            try:
+                self._handle_call(latest)
+            except Exception:
+                pass
+        if self._v4w_status:
+            msg, self._v4w_status = self._v4w_status, None
+            if not self.current:  # don't clobber a lookup already on screen
+                self.call_label.configure(text=msg)
         try:
             while self._inbox:
                 call, i, res = self._inbox.pop(0)

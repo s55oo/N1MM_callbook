@@ -18,6 +18,16 @@ cache_file=n1mm_VHFcallbook_cache.json
 # still de-dupes within the session. Default: yes.
 # cache_persist=yes
 
+# VHFCtest4WIN pre-log callsign feed. With vhfctest_share=yes the app also
+# listens to VHFCtest4WIN's multi-op sharing broadcasts (UDP 6767) and
+# looks up the callsign as you type it, before the QSO is logged - so a
+# wrong QRA locator can be caught while it is still editable. Default: no.
+# Start the callbook BEFORE VHFCtest4WIN; if VHFCtest4WIN is already
+# running it holds the port exclusively and the callbook must be run as
+# Administrator (it then reads the broadcasts with a raw capture socket).
+# vhfctest_share=no
+# vhfctest_port=6767
+
 # Optional third source: the PAID QRZ.com XML Callbook Data service
 # (https://www.qrz.com/page/xml_data.html). Requires an active QRZ XML
 # subscription. Leave empty to keep QRZ out of the lookup chain.

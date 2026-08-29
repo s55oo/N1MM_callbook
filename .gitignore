@@ -2,9 +2,13 @@ __pycache__/
 *.pyc
 callbook.cfg
 n1mm_VHFcallbook.cfg
+VHFctest4WinCallbook.cfg
 *_cache.json
 *_window.json
 qrz_session.json
 dist/
 build/
 *.spec.bak
+
+# packet captures (dev reference only, kept locally)
+*.pcapng

@@ -1,0 +1,5 @@
+# 2026-08-29 17:02:32.762098  ports [6767, 12060]  ->  C:\HAM\N1MM Logger+\N1MM_callbook\dev\vhfctest4win-captures\sniff_multi_20260829_170232.log
+# UDP :6767 bind failed: [WinError 10013] An attempt was made to access a socket in a way forbidden by its access permissions
+# TCP listening on :6767
+# UDP listening on :12060
+# TCP listening on :12060

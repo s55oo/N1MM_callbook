@@ -321,10 +321,6 @@ dev\bench_latency.py – lookup-latency benchmark
   capture socket; in a multi-op it follows only its own PC's VHFCtest4WIN.
   The same feed is also available in the plain VHF callbook via
   `vhfctest_share=yes`. HF unchanged (shared-engine plumbing only).
-- **2.13 (HF) / 1.17 (VHF)** – removed the offline `cty.dat` slot added in
-  2.12: the call-area zone guesses weren't useful enough in practice.
-  Back to the three network sources; the green "all agree" check is
-  whole-token again.
 - **2.11 (HF) / 1.15 (VHF)** – the main text turns **light green when every
   source that answered agrees**. VHF locators are now separated by ` - `
   (`JN76HD - JN76HD - JN76HD`) instead of plain spaces, and a source that

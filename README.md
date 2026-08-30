@@ -203,9 +203,9 @@ python VHFctest4WinCallbook.py [--config VHFctest4WinCallbook.cfg]
   line with the result and the round-trip time, e.g.
 
   ```
-  QRZ XML OK       775 ms
-  QRZCQ   OK       489 ms
-  HamQTH  no data  508 ms
+  QRZ XML OK       521 ms
+  QRZCQ   OK       152 ms
+  HamQTH  OK       236 ms
   ```
 
   `OK` = answered and parsed, `no data` = reachable but no record for the
@@ -213,10 +213,9 @@ python VHFctest4WinCallbook.py [--config VHFctest4WinCallbook.cfg]
   turns light green when every source is `OK`. The result stays up for a
   few seconds, then the window goes to its normal idle state (the footer
   keeps a short `self-test: 3/3 sources OK` summary until the first
-  lookup). The test callsign defaults to **TK0C**; because HamQTH has no
-  TK0C record it shows `no data` there – set `selftest_call=` to a call
-  listed on all sources for an all-green check, or `selftest=no` to skip
-  the test entirely.
+  lookup). The test callsign defaults to **S55OO** (listed on every
+  source); set `selftest_call=` to another call if some of your sources
+  don't list it, or `selftest=no` to skip the test entirely.
 - **Fast lookups:** the connection to each source is kept alive and
   re-used between QSOs, and responses are gzip-compressed, so the ~90 ms
   TLS handshake isn't paid every time. In testing this cut the time to
@@ -244,7 +243,7 @@ cache_persist=yes                        (no = in-memory only, never writes)
 
 # Start-up self-test (query every source once on launch, show OK / time):
 # selftest=yes
-# selftest_call=TK0C                     (call to probe; blank/selftest=no disables)
+# selftest_call=S55OO                    (call to probe; blank/selftest=no disables)
 
 # Optional - paid QRZ.com XML service (extra state / locator slot):
 # qrz_username=S55OO
@@ -334,13 +333,13 @@ dev\bench_latency.py – lookup-latency benchmark
 ## 7. Changelog
 
 - **2.15 (HF) / 1.19 (VHF) / 1.1 (VHFctest4WIN)** – **start-up self-test**:
-  on launch each configured source is queried once (callsign **TK0C** by
+  on launch each configured source is queried once (callsign **S55OO** by
   default) and the window lists them line by line with `OK` / `no data` /
   `FAIL` and the round-trip time in ms, turning light green when every
   source answers `OK`. The result holds for a few seconds, then the
   window goes idle (a short `self-test: n/n sources OK` stays in the
   footer until the first real lookup). New `.cfg` keys `selftest` (default
-  yes) and `selftest_call` (default `TK0C`). Shared-engine change – all
+  yes) and `selftest_call` (default `S55OO`). Shared-engine change – all
   three apps bump.
 - **2.14 (HF) / 1.18 (VHF) / new: VHFctest4WinCallbook 1.0** – new
   **`VHFctest4WinCallbook`** app: the side-by-side locator check driven by

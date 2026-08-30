@@ -20,11 +20,10 @@ cache_file=n1mm_VHFcallbook_cache.json
 
 # Start-up self-test: on launch each source is queried once and the window
 # lists, line by line, whether it answered and how many ms it took.
-# selftest=no turns it off. selftest_call sets the test callsign (default
-# TK0C; HamQTH has no TK0C record so it shows "no data" there - use a call
-# listed on all sources if you want an all-green check).
+# selftest=no turns it off. selftest_call sets the test callsign
+# (default S55OO; pick any call that all your sources list).
 # selftest=yes
-# selftest_call=TK0C
+# selftest_call=S55OO
 
 # VHFCtest4WIN pre-log callsign feed. With vhfctest_share=yes the app also
 # listens to VHFCtest4WIN's multi-op sharing broadcasts (UDP 6767) and

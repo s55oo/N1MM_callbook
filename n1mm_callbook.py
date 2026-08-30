@@ -73,13 +73,11 @@ FONT_SIZES = [(14, 18), (24, 15), (34, 13), (9999, 11)]
 # Start-up self-test. On launch every configured source is queried once
 # for PRECHECK_CALL and the window lists, source by source, whether it
 # answered and how long it took - a quick "are the sources reachable and
-# still parsing?" check before a contest. The call defaults to a well
-# known multi-op contest station; override it with selftest_call= (or
-# turn the whole thing off with selftest=no) in the .cfg. Note the
-# default is not in every callbook (HamQTH has no TK0C record, so it
-# reads "no data", not "FAIL") - pick a call that is listed everywhere if
-# you want an all-green self-test.
-PRECHECK_CALL = "TK0C"
+# still parsing?" check before a contest. The default is the author's own
+# call, which is listed (with the same locator) on every source, so a
+# healthy run is all-green; override it with selftest_call= (or turn the
+# whole thing off with selftest=no) in the .cfg.
+PRECHECK_CALL = "S55OO"
 PRECHECK_HOLD_MS = 4000  # keep the finished result on screen this long
 SOURCE_LABELS = {
     "qrz_lookup": "QRZ XML",

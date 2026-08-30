@@ -22,11 +22,10 @@ cache_file=callbook_cache.json
 
 # Start-up self-test: on launch each source is queried once and the window
 # lists, line by line, whether it answered and how many ms it took.
-# selftest=no turns it off. selftest_call sets the test callsign (default
-# TK0C; HamQTH has no TK0C record so it shows "no data" there - use a call
-# listed on all sources if you want an all-green check).
+# selftest=no turns it off. selftest_call sets the test callsign
+# (default S55OO; pick any call that all your sources list).
 # selftest=yes
-# selftest_call=TK0C
+# selftest_call=S55OO
 
 # Optional third source: the PAID QRZ.com XML Callbook Data service for
 # HF lookups - use it if you want a third name/state source.

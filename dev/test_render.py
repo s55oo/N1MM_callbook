@@ -195,6 +195,35 @@ def main():
     ok &= check("geometry regex keeps position only",
                 "{}{}".format(*m.groups()) if m else None, "+321+123")
 
+    # start-up self-test: source labels + the per-line render
+    import functools
+    ok &= check("source_label: plain function",
+                cb.source_label(cb.qrzcq_lookup), "QRZCQ")
+    ok &= check("source_label: functools.partial unwrapped",
+                cb.source_label(functools.partial(cb.qrz_lookup, username="x")),
+                "QRZ XML")
+
+    pc = make(cb.CallbookApp)
+    pc.current = None
+    pc._precheck_active = True
+    pc.source_labels = ("QRZ XML", "QRZCQ", "HamQTH")
+    pc._precheck = [("OK", 312.0), ("no data", 181.4), None]
+    pc._render_precheck()
+    ok &= check("precheck: mixed line render",
+                pc.canvas.text,
+                "QRZ XML OK       312 ms\nQRZCQ   no data  181 ms\nHamQTH  …")
+    pc._precheck = [("OK", 312.0), ("OK", 181.0), ("OK", 233.0)]
+    ok &= check("precheck: all OK -> green",
+                (pc._render_precheck() or pc.canvas.fill), cb.TEXT_AGREE)
+    pc._precheck = [("OK", 312.0), ("FAIL", 15000.0), ("OK", 233.0)]
+    ok &= check("precheck: a FAIL -> default text",
+                (pc._render_precheck() or pc.canvas.fill), cb.TEXT_DEFAULT)
+    pc.current = "W1AW"
+    pc.canvas.text = "unchanged"
+    pc._render_precheck()
+    ok &= check("precheck: suppressed once a real call is on screen",
+                pc.canvas.text, "unchanged")
+
     print("\nALL PASS" if ok else "\nSOME FAILED")
     sys.exit(0 if ok else 1)
 

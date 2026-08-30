@@ -22,13 +22,13 @@ fetches for the same callsign and to stay polite to the server.
 
 Made by S55OO with AI assistance.
 
-Version: 2.14
+Version: 2.15
 
 Usage:
     python n1mm_callbook.py [--port 12060] [--config callbook.cfg]
 """
 
-__version__ = "2.14"
+__version__ = "2.15"
 
 import argparse
 import base64
@@ -47,7 +47,7 @@ import tkinter as tk
 import urllib.parse
 import xml.etree.ElementTree as ET
 
-USER_AGENT = "Mozilla/5.0 N1MM_callbook/2.14"
+USER_AGENT = "Mozilla/5.0 N1MM_callbook/2.15"
 HAMQTH_UA = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
     "(KHTML, like Gecko) Chrome/126.0 Safari/537.36"
@@ -69,6 +69,35 @@ SLOT_PENDING = "…"  # a source is still being queried ("…")
 FONT_SIZE_NAME = 18
 FONT_SIZE_FOOTER = 10
 FONT_SIZES = [(14, 18), (24, 15), (34, 13), (9999, 11)]
+
+# Start-up self-test. On launch every configured source is queried once
+# for PRECHECK_CALL and the window lists, source by source, whether it
+# answered and how long it took - a quick "are the sources reachable and
+# still parsing?" check before a contest. The call defaults to a well
+# known multi-op contest station; override it with selftest_call= (or
+# turn the whole thing off with selftest=no) in the .cfg. Note the
+# default is not in every callbook (HamQTH has no TK0C record, so it
+# reads "no data", not "FAIL") - pick a call that is listed everywhere if
+# you want an all-green self-test.
+PRECHECK_CALL = "TK0C"
+PRECHECK_HOLD_MS = 4000  # keep the finished result on screen this long
+SOURCE_LABELS = {
+    "qrz_lookup": "QRZ XML",
+    "qrzcq_lookup": "QRZCQ",
+    "hamqth_lookup": "HamQTH",
+    "qrzdb_lookup": "QRZ web",
+}
+
+
+def source_label(fn):
+    """Short human name for a lookup-chain entry.
+
+    Unwraps the ``functools.partial`` that ``__init__`` builds for the
+    paid QRZ XML source so the self-test can label every slot.
+    """
+    fn = getattr(fn, "func", fn)
+    name = getattr(fn, "__name__", "")
+    return SOURCE_LABELS.get(name, name or "source")
 
 
 def packet_callsign(data):
@@ -854,6 +883,13 @@ def run(app_class, config_name, cache_name, description, always_vhfctest=False):
     # VHFCtest4WIN pre-log callsign feed (VHFctest4WinCallbook, or the VHF
     # variant with vhfctest_share=yes). The port matches VHFCtest4WIN's
     # multi-op sharing port (6767).
+    # Start-up self-test callsign. Empty string = disabled (selftest=no).
+    selftest_call = settings.get("selftest_call", PRECHECK_CALL).strip().upper()
+    if settings.get("selftest", "yes").strip().lower() in (
+        "no", "false", "0", "off",
+    ):
+        selftest_call = ""
+
     vhfctest_port = 0
     share = settings.get("vhfctest_share", "no").strip().lower() in (
         "yes", "true", "1", "on",
@@ -880,6 +916,7 @@ def run(app_class, config_name, cache_name, description, always_vhfctest=False):
         win_file,
         cache_persist,
         vhfctest_port,
+        selftest_call,
     )
     root.mainloop()
 
@@ -911,7 +948,7 @@ class CallbookApp:
 
     def __init__(self, root, cache_path, port, cache_days, qrz_username="",
                  qrz_password="", win_file=None, cache_persist=True,
-                 vhfctest_port=0):
+                 vhfctest_port=0, selftest_call=""):
         self.root = root
         self.port = port
         self.vhfctest_port = vhfctest_port
@@ -932,6 +969,7 @@ class CallbookApp:
             )
         chain.extend(self.LOOKUP_CHAIN)
         self.lookup_chain = tuple(chain)
+        self.source_labels = tuple(source_label(fn) for fn in self.lookup_chain)
         # Background lookups push per-source results here; the GUI drains
         # the queue every 100ms and renders each slot as it arrives.
         self._inbox = []
@@ -940,6 +978,11 @@ class CallbookApp:
         # hand-off pattern as _inbox - never touch Tk from that thread).
         self._v4w_inbox = []
         self._v4w_status = None  # one-shot hint text from the v4w listener
+        # Start-up self-test (see _start_precheck). Empty call = disabled.
+        self._selftest_call = normalize_call(selftest_call)
+        self._precheck = None       # per source: None = pending, (status, ms)
+        self._precheck_inbox = []   # worker threads -> GUI, like _inbox
+        self._precheck_active = False
         self._slots = None
         self._pending_inds = set()
         self.local = set(local_interfaces())
@@ -966,6 +1009,8 @@ class CallbookApp:
             self.v4w_thread.start()
         self.root.protocol("WM_DELETE_WINDOW", self.on_close)
         self.root.after(100, self._poll_inbox)
+        if self._selftest_call:
+            self.root.after(150, self._start_precheck)
 
     def _build(self):
         self.root.title("{}  -  UDP {}  v{}".format(self.APP_TITLE, self.port, self.VERSION))
@@ -1073,6 +1118,7 @@ class CallbookApp:
         call = normalize_call(call)
         if not call or call.lower().startswith("test"):
             return
+        self._precheck_active = False  # a real callsign supersedes the self-test
         # Show the callsign immediately (it may change as the user types),
         # but debounce the network lookup until it has been stable a moment.
         if self.current != call:
@@ -1131,6 +1177,80 @@ class CallbookApp:
         for i, fn in enumerate(self.lookup_chain):
             threading.Thread(target=run, args=(i, fn), daemon=True).start()
 
+    def _start_precheck(self):
+        # One-off start-up probe: query every source once for the self-test
+        # callsign and show, line by line, whether it answered and how long
+        # it took. Skipped if a real callsign already came in.
+        if self.current or not self._selftest_call:
+            return
+        self._precheck = [None] * len(self.lookup_chain)
+        self._precheck_active = True
+        self.call_label.configure(text="self-test: " + self._selftest_call)
+        self._render_precheck()
+
+        def run(i, fn):
+            t0 = time.perf_counter()
+            try:
+                res = fn(self._selftest_call)
+            except Exception:
+                res = None
+            ms = (time.perf_counter() - t0) * 1000.0
+            if res is None:
+                status = "FAIL"          # network / HTTP error - source down
+            elif any((res or {}).values()):
+                status = "OK"            # answered and parsed to real fields
+            else:
+                status = "no data"      # reachable, but no record for this call
+            self._precheck_inbox.append((i, status, ms))
+
+        for i, fn in enumerate(self.lookup_chain):
+            threading.Thread(target=run, args=(i, fn), daemon=True).start()
+
+    def _render_precheck(self):
+        # One monospaced line per source: "QRZCQ   OK      181 ms".
+        if not self._precheck_active or self.current or self._precheck is None:
+            return
+        lines = []
+        for lbl, v in zip(self.source_labels, self._precheck):
+            if v is None:
+                lines.append("{:<7} {}".format(lbl, SLOT_PENDING))
+            else:
+                status, ms = v
+                lines.append("{:<7} {:<7} {:4.0f} ms".format(lbl, status, ms))
+        done = all(v is not None for v in self._precheck)
+        failed = done and any(v[0] == "FAIL" for v in self._precheck)
+        all_ok = done and all(v[0] == "OK" for v in self._precheck)
+        self.canvas.configure(bg=COLOR_ACTIVE if (not done or failed) else COLOR_IDLE)
+        self.canvas.itemconfigure(
+            self.main_id,
+            text="\n".join(lines),
+            fill=TEXT_AGREE if all_ok else TEXT_DEFAULT,
+            font=("Consolas", 9, "bold"),  # small + monospaced: up to 4 lines
+        )
+
+    def _finish_precheck(self):
+        # Drop the probe result and return to the idle placeholder, unless a
+        # real callsign already took over the canvas while it was showing.
+        if not self._precheck_active:
+            return
+        self._precheck_active = False
+        results = self._precheck or []
+        oks = sum(1 for v in results if v and v[0] == "OK")
+        fails = sum(1 for v in results if v and v[0] == "FAIL")
+        self._precheck = None
+        if self.current:
+            return
+        if fails:
+            summary = "self-test: {} source(s) FAILED".format(fails)
+        else:
+            summary = "self-test: {}/{} sources OK".format(oks, len(results))
+        self.call_label.configure(text=summary)
+        self.canvas.configure(bg=COLOR_IDLE)
+        self.canvas.itemconfigure(
+            self.main_id, text="—", fill=TEXT_DEFAULT,
+            font=("Segoe UI", FONT_SIZE_NAME, "bold"),
+        )
+
     def _poll_inbox(self):
         # GUI thread: drains results posted by the worker and renders them.
         # First fold in any callsign the VHFCtest4WIN listener queued - only
@@ -1147,6 +1267,16 @@ class CallbookApp:
             msg, self._v4w_status = self._v4w_status, None
             if not self.current:  # don't clobber a lookup already on screen
                 self.call_label.configure(text=msg)
+        if self._precheck_inbox:
+            while self._precheck_inbox:
+                i, status, ms = self._precheck_inbox.pop(0)
+                if self._precheck is not None and i < len(self._precheck):
+                    self._precheck[i] = (status, ms)
+            self._render_precheck()
+            if self._precheck_active and self._precheck is not None and all(
+                v is not None for v in self._precheck
+            ):
+                self.root.after(PRECHECK_HOLD_MS, self._finish_precheck)
         try:
             while self._inbox:
                 call, i, res = self._inbox.pop(0)

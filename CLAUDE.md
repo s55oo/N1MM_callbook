@@ -53,6 +53,22 @@ each posts `(call, slot_index, result_or_None)` to `self._inbox` →
 whose call != `self.current`, renders each slot as it lands, and caches
 once every slot is in.
 
+### Start-up self-test
+
+`run()` resolves `selftest` / `selftest_call` (default `TK0C`, empty =
+off) and passes the call to `__init__`, which schedules
+`_start_precheck` ~150 ms after the window is up. It fires one thread per
+source (same pattern as `_do_lookup`), each posting
+`(slot_index, status, ms)` to `self._precheck_inbox` where `status` is
+`"OK"` / `"no data"` (reachable, empty dict) / `"FAIL"` (`None`).
+`_poll_inbox` drains it, `_render_precheck` draws one monospaced line per
+source, and once every slot is in it schedules `_finish_precheck`
+(`PRECHECK_HOLD_MS` later) to restore the idle `—`. A real callsign
+supersedes it: `_handle_call` clears `_precheck_active` and
+`_render_precheck` early-outs whenever `self.current` is set. `TK0C` is
+deliberately not on HamQTH, so that slot reads `no data` — a genuine
+"is HamQTH up?" check without a hardcoded expectation.
+
 `_render_slots` builds the display string. `_source_value` joins the
 `SLOT_FIELDS` into one `a/b` token per slot; the `state` field is dropped
 when the source's country is non-US (`_US_NAMES`), but `cqzone` is kept.

@@ -16,6 +16,14 @@ cache_file=VHFctest4WinCallbook_cache.json
 # still de-dupes within the session. Default: yes.
 # cache_persist=yes
 
+# Start-up self-test: on launch each source is queried once and the window
+# lists, line by line, whether it answered and how many ms it took.
+# selftest=no turns it off. selftest_call sets the test callsign (default
+# TK0C; HamQTH has no TK0C record so it shows "no data" there - use a call
+# listed on all sources if you want an all-green check).
+# selftest=yes
+# selftest_call=TK0C
+
 # Optional extra source: the PAID QRZ.com XML Callbook Data service
 # (https://www.qrz.com/page/xml_data.html). Requires an active QRZ XML
 # subscription. Leave empty to keep QRZ out of the lookup chain.

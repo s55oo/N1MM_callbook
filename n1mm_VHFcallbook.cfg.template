@@ -18,6 +18,14 @@ cache_file=n1mm_VHFcallbook_cache.json
 # still de-dupes within the session. Default: yes.
 # cache_persist=yes
 
+# Start-up self-test: on launch each source is queried once and the window
+# lists, line by line, whether it answered and how many ms it took.
+# selftest=no turns it off. selftest_call sets the test callsign (default
+# TK0C; HamQTH has no TK0C record so it shows "no data" there - use a call
+# listed on all sources if you want an all-green check).
+# selftest=yes
+# selftest_call=TK0C
+
 # VHFCtest4WIN pre-log callsign feed. With vhfctest_share=yes the app also
 # listens to VHFCtest4WIN's multi-op sharing broadcasts (UDP 6767) and
 # looks up the callsign as you type it, before the QSO is logged - so a

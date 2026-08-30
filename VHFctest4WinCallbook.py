@@ -28,13 +28,13 @@ needs a QRZ XML subscription). Lookups are cached in
 
 Made by S55OO with AI assistance.
 
-Version: 1.0
+Version: 1.1
 
 Usage:
     python VHFctest4WinCallbook.py [--config VHFctest4WinCallbook.cfg]
 """
 
-__version__ = "1.0"
+__version__ = "1.1"
 
 import ctypes
 import os

@@ -21,13 +21,13 @@ is still editable. See section 1 of the README.
 
 Made by S55OO with AI assistance.
 
-Version: 1.18
+Version: 1.19
 
 Usage:
     python n1mm_VHFcallbook.py [--port 12060] [--config n1mm_VHFcallbook.cfg]
 """
 
-__version__ = "1.18"
+__version__ = "1.19"
 
 import n1mm_callbook as cb
 

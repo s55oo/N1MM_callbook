@@ -26,13 +26,13 @@ Lookups are cached in ``VHFcallbook_cache.json``.
 
 Made by S55OO with AI assistance.
 
-Version: 1.1
+Version: 1.2
 
 Usage:
     python VHFcallbook.py [--port 12060] [--config VHFcallbook.cfg]
 """
 
-__version__ = "1.1"
+__version__ = "1.2"
 
 import ctypes
 import os
@@ -119,13 +119,12 @@ class VHFcallbookApp(cb.CallbookApp):
     # Locator per source, shown side by side ("JN76GB - JN76HD - JN76HD")
     # so a wrong one stands out, with the operator name (from the callbook)
     # in front of it. When every source that answered agrees, the row
-    # collapses to one locator in a larger font and turns light green -
-    # "Hans - JN76HD" - a quick "grid confirmed" signal.
+    # collapses to one locator in a larger green font ("Hans - JN76HD") - a
+    # quick "grid confirmed" signal (COLLAPSE_ON_AGREE, inherited).
     SLOT_FIELDS = ("grid",)
     SLOT_SEP = " - "
     SHOW_NAME = True
     DX_COUNTRY = False        # locator-focused: no " (Country)" after the name
-    COLLAPSE_ON_AGREE = True
     # Slot order: QRZCQ, HamQTH's "Grid:" row, then the locator computed
     # from the coordinates on the public QRZ.com page. The paid QRZ XML
     # service is prepended automatically when credentials are configured.

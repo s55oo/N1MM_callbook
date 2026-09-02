@@ -78,12 +78,20 @@ def main():
         app._render_slots("T", slots, set(pending))
         return app.canvas.font[1]
 
-    ok &= check("HF US, all agree", r(hf, [US, US2, US]), "Fred - MA/5 MA/5 MA/5")
-    ok &= check("HF US, one source has no zone", r(hf, [US, USnz, US]), "Fred - MA/5 MA MA/5")
+    ok &= check("HF all agree -> state/zone collapses to one token",
+                r(hf, [US, US2, US]), "Fred - MA/5")
+    ok &= check("HF all agree -> collapsed line uses the big font",
+                rsize(hf, [US, US2, US]), cb.FONT_SIZE_BIG)
+    ok &= check("HF US, one source has no zone -> no collapse",
+                r(hf, [US, USnz, US]), "Fred - MA/5 MA MA/5")
+    ok &= check("HF US, one source has no zone -> normal font",
+                rsize(hf, [US, USnz, US]) != cb.FONT_SIZE_BIG, True)
     ok &= check("HF US, 2 slots pending", r(hf, [US, None, None], {1, 2}), "Fred - MA/5 … …")
-    ok &= check("HF DX, foreign state dropped, zone kept", r(hf, [DL, DX, DX]), "Hans (Germany) - 14 14 14")
+    ok &= check("HF DX, foreign state dropped, zones agree -> collapse",
+                r(hf, [DL, DX, DX]), "Hans (Germany) - 14")
     ok &= check("HF DX, no zone anywhere", r(hf, [DXnz, DXnz, DXnz]), "Hans (Germany)")
-    ok &= check("HF empty slot shows '·'", r(hf, [US, EMPTY, US]), "Fred - MA/5 · MA/5")
+    ok &= check("HF empty slot shows '·' (partial, no collapse)",
+                r(hf, [US, EMPTY, USnz]), "Fred - MA/5 · MA")
     ok &= check("HF nothing", r(hf, [EMPTY, EMPTY, EMPTY]), "no data")
     ok &= check("HF all failed", r(hf, [None, None, None]), "lookup failed")
 

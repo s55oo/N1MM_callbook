@@ -12,12 +12,13 @@ values are shown side by side, so when sources disagree the wrong one is
 obvious and the operator picks the right value for the exchange.
 
 - **HF** (`n1mm_callbook.py`, v2.x): shows `name - state/zone state/zone …`;
-  for DX (non-US) stations `name (country) - zone zone …`.
-- **VHF** (`VHFcallbook.py`, v1.x): shows the maidenhead locator per
-  source, with the operator name in front; when every source that answered
-  agrees the row collapses to one locator in a larger green font
-  (`Hans - JN76HD`). `VHFcallbookApp` is a ~35-line subclass of the HF
-  app's `CallbookApp`. It listens on **both** the N1MM port (12060) and
+  for DX (non-US) stations `name (country) - zone zone …`. When every
+  source agrees the repeated token collapses to one in a larger green font
+  (`Fred - MA/5`).
+- **VHF** (`VHFcallbook.py`, v1.x): the same, showing the maidenhead
+  locator per source instead of state/zone (`Hans - JN76HD` when all
+  agree). `VHFcallbookApp` is a ~35-line subclass of the HF app's
+  `CallbookApp`. It listens on **both** the N1MM port (12060) and
   VHFCtest4WIN's multi-op sharing broadcast (UDP 6767) at once, so it
   works with either logger; the 6767 feed also carries the callsign *as
   it is typed*, pre-log. `main()` reads `vhfctest_share` (**default yes**)
@@ -86,9 +87,9 @@ when `DX_COUNTRY` is set (HF; the VHF apps turn it off). Slots are joined
 by `SLOT_SEP`; an empty slot is `SLOT_EMPTY` (`·`), a pending one
 `SLOT_PENDING` (`…`). When `all_done` and every real value matches (>=2 of
 them) the text fill is `TEXT_AGREE` (light green) instead of `TEXT_DEFAULT`
-(`agree`). When `agree` **and** `COLLAPSE_ON_AGREE` (the VHF apps), that
-one value is shown once instead of `SLOT_SEP`-joined, and – unless the
-name pushes the line past `FONT_BIG_MAXLEN` – drawn at `FONT_SIZE_BIG`
+(`agree`). When `agree` **and** `COLLAPSE_ON_AGREE` (on for every app),
+that one value is shown once instead of `SLOT_SEP`-joined, and – unless
+the name pushes the line past `FONT_BIG_MAXLEN` – drawn at `FONT_SIZE_BIG`
 instead of the usual length-based `_font_for`.
 
 ### Class attributes `VHFcallbookApp` overrides (base = HF behaviour)
@@ -100,10 +101,12 @@ SLOT_FIELDS   # HF ("state","cqzone");  VHF ("grid",)
 SLOT_SEP      # HF " " (name already has " - " after it);  VHF " - "
 SHOW_NAME     # HF True; VHF also True (name printed once, in front of the grids)
 DX_COUNTRY    # HF True (name -> "name (country)" for DX);  VHF False
-COLLAPSE_ON_AGREE  # base False; True on VHF — all sources agree -> one big green value
 LOOKUP_CHAIN  # HF (qrzcq, hamqth); VHF adds qrzdb; qrz_lookup prepended by __init__ when creds exist
 VHFCTEST_CAPABLE  # base False; True on VHF — allows the 6767 feed (run() wires the 2nd listener)
 ```
+
+`COLLAPSE_ON_AGREE` is `True` on the base `CallbookApp` now (both apps
+collapse a unanimous result), so `VHFcallbookApp` no longer overrides it.
 
 ## Gotchas / history (don't reintroduce these bugs)
 

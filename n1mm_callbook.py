@@ -22,13 +22,13 @@ fetches for the same callsign and to stay polite to the server.
 
 Made by S55OO with AI assistance.
 
-Version: 2.16
+Version: 2.17
 
 Usage:
     python n1mm_callbook.py [--port 12060] [--config callbook.cfg]
 """
 
-__version__ = "2.16"
+__version__ = "2.17"
 
 import argparse
 import base64
@@ -47,7 +47,7 @@ import tkinter as tk
 import urllib.parse
 import xml.etree.ElementTree as ET
 
-USER_AGENT = "Mozilla/5.0 N1MM_callbook/2.16"
+USER_AGENT = "Mozilla/5.0 N1MM_callbook/2.17"
 HAMQTH_UA = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
     "(KHTML, like Gecko) Chrome/126.0 Safari/537.36"
@@ -948,9 +948,10 @@ class CallbookApp:
     # the VHF variants turn it off - they stay locator-focused.
     DX_COUNTRY = True
     # When every source that answered returns the same slot value, show it
-    # just once in a larger font ("JN76HD") instead of repeating it per
-    # source ("JN76HD - JN76HD - JN76HD"). Off on HF, on for the VHF apps.
-    COLLAPSE_ON_AGREE = False
+    # just once in a larger font instead of repeating it per source:
+    # "Fred - MA/5" not "Fred - MA/5 MA/5 MA/5" (HF), "Hans - JN76HD" not
+    # "Hans - JN76HD - JN76HD - JN76HD" (VHF). On for every app.
+    COLLAPSE_ON_AGREE = True
     # Lookup sources run in order; every source's value is kept separately.
     # Variants can add more sources.
     LOOKUP_CHAIN = (qrzcq_lookup, hamqth_lookup)
@@ -1378,11 +1379,13 @@ class CallbookApp:
         # to one source in chain order; a slot still being queried shows
         # "…" and one that answered with nothing shows "·", so results
         # appear as they arrive. When every source that answered agrees the
-        # text turns light green. Example final lines:
-        #   HF, US:   "Dave - MA/5 MA/5 MA/5"      (state / CQ zone per source)
-        #   HF, DX:   "Hans (Germany) - 14 14 14"
-        #   VHF:      "Hans - JN76GB - JN76HD - JN76HD"   (sources disagree)
-        #   VHF agree: "Hans - JN76HD"  (collapsed, larger font, green)
+        # text turns light green and (COLLAPSE_ON_AGREE) the repeated value
+        # collapses to one token in a larger font. Example final lines:
+        #   HF, sources differ:  "Dave - MA/5 MA/4 MA/5"  (state/zone per source)
+        #   HF, all agree:       "Dave - MA/5"            (collapsed, big, green)
+        #   HF, DX all agree:    "Hans (Germany) - 14"
+        #   VHF, sources differ: "Hans - JN76GB - JN76HD - JN76HD"
+        #   VHF, all agree:      "Hans - JN76HD"          (collapsed, big, green)
         finished = [slots[i] for i in range(len(slots)) if i not in pending]
         any_data = any(self._source_value(s) for s in finished if s)
         vals = []

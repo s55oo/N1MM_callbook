@@ -1,6 +1,6 @@
 # N1MM Callbook – N1MM Logger+ Contest Callbook
 
-> **Version:** 2.16 (HF – `n1mm_callbook`) / 1.1 (VHF – `VHFcallbook`)
+> **Version:** 2.17 (HF – `n1mm_callbook`) / 1.2 (VHF – `VHFcallbook`)
 > · Made by **S55OO** with AI assistance. · **Public domain** – see [LICENSE](LICENSE).
 
 A compact always-on-top window that listens to the N1MM Logger+ external
@@ -11,10 +11,13 @@ source answers, so nothing waits for the slowest one – and when the
 sources disagree the wrong one stands out and you can pick the right one.
 The window shows the worked station's **name**, then each source's
 **US state and CQ zone** as one `state/zone` token, and the **callsign**
-in the footer – e.g. `Fred - MA/5 MA/5 MA/5` (name printed once as the
-shortest of the sources). For a **non-US (DX) station**, where there is no
-US state, the HF window shows the **operator name and country** followed
-by each source's **CQ zone**, e.g. `Hans (Germany) - 14 14 14`.
+in the footer (name printed once as the shortest of the sources). When
+the sources **disagree** you see every token – `Fred - MA/5 MA/4 MA/5` –
+and pick the right one; when they **all agree** it collapses to a single
+`state/zone` in a **larger green font** – `Fred - MA/5` – a quick "you can
+trust this" signal. For a **non-US (DX) station**, where there is no US
+state, the HF window shows the **operator name and country** followed by
+the **CQ zone**, e.g. `Hans (Germany) - 14`.
 
 The HF callbook pulls its **state, CQ zone** and name from up to **three
 sources**: **[QRZ.com XML](https://www.qrz.com/page/xml_data.html),
@@ -162,26 +165,33 @@ python VHFcallbook.py   [--port 12060] [--config VHFcallbook.cfg]
   slot). The order is just the column layout, not a priority – every source
   is fetched at the same time. When the values differ (e.g.
   `MA/5 MA/4 MA/5`) you see it immediately and can decide which one is
-  right for the exchange. **When every source that answered agrees, the
-  text turns light green** – a quick "you can trust this" signal.
+  right for the exchange.
+- **When every source that answered agrees**, the text turns light green
+  **and the repeated token collapses to one, in a larger font** – so
+  `FRED - MA/5 MA/5 MA/5` shows as **`FRED - MA/5`** – a quick "you can
+  trust this" signal. A disagreement (`FRED - MA/5 MA/4 MA/5`), or a
+  source that returned only part (`MA` vs `MA/5`), keeps every slot
+  visible. (If the name makes the collapsed line too long for the window
+  it stays at the normal size.)
 - For a **US station** the main area shows the **shortest operator name**
-  (printed once) followed by one **`state/zone`** token per source, e.g.
-  `FRED - MA/5 MA/5 MA/5`. A slot shows just the state when that source has
-  no CQ zone (`MA`), just the zone for a DX-style entry, or `·` when it
-  returned neither. The font shrinks automatically for long text.
+  (printed once) followed by the **`state/zone`** token – one per source
+  when they differ, or a single larger one when they agree. A slot shows
+  just the state when that source has no CQ zone (`MA`), just the zone for
+  a DX-style entry, or `·` when it returned neither. The font shrinks
+  automatically for long text.
 - For a **non-US (DX) station** there is no US state, so the HF window
-  shows the **operator name and country** followed by each source's **CQ
-  zone**, e.g. `Hans (Germany) - 14 14 14` (or just `Hans (Germany)` when
-  no source reports a zone). A foreign subdivision that QRZ XML sometimes
-  returns in the state field (e.g. `HE` for a German call) is ignored; the
-  CQ zone, which is meaningful worldwide, is kept.
+  shows the **operator name and country** followed by the **CQ zone**,
+  e.g. `Hans (Germany) - 14` (or `Hans (Germany) - 14 14` when the sources
+  disagree, or just `Hans (Germany)` when none reports a zone). A foreign
+  subdivision that QRZ XML sometimes returns in the state field (e.g. `HE`
+  for a German call) is ignored; the CQ zone, which is meaningful
+  worldwide, is kept.
 - The **VHF variant** shows the **QRA/maidenhead locator** the same
   side-by-side way, separated by ` - `, with the **operator name** printed
-  once in front (`Hans - JN76GB - JN76HD - JN76HD`). **When every source
-  that answered agrees on the locator the row collapses to one value in a
-  larger green font** (`Hans - JN76HD`); a disagreement keeps every slot
-  visible so the wrong one stands out. It has no country/DX handling – for
-  a VHF exchange only the grid and the name matter.
+  once in front – `Hans - JN76GB - JN76HD - JN76HD` when the sources
+  disagree, collapsing the same way to `Hans - JN76HD` when they agree. It
+  has no country/DX handling – for a VHF exchange only the grid and the
+  name matter.
 - **Local computer only:** the app only reacts to packets sent from *this*
   PC (identified by its local interface IPs). Broadcasts from other
   stations on the network are ignored, so only the local operator's
@@ -331,6 +341,14 @@ dev\bench_latency.py – lookup-latency benchmark
 > now. Older entries below that name the retired apps are historical; the
 > feature they describe lives in `VHFcallbook` today.
 
+- **v2.19 – HF 2.17 / VHF 1.2** – **agreed `state/zone` collapses too.**
+  The HF window now does what the VHF one already did: when every source
+  that answered returns the **same state and CQ zone**, the repeated
+  `state/zone` token merges into one, shown in a **larger font**
+  (`Fred - MA/5 MA/5 MA/5` → `Fred - MA/5`), still green. A disagreement,
+  or a partial answer (`MA` vs `MA/5`), keeps every slot visible. Shared
+  `COLLAPSE_ON_AGREE` engine flag – now on for both apps; VHF behaviour
+  unchanged.
 - **v2.18 / `VHFcallbook` 1.1** – `n1mm_VHFcallbook` and
   `VHFctest4WinCallbook` **deleted** (source, EXEs, config templates, spec
   files). `VHFcallbook` already did everything both did – a single window

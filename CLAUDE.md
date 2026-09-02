@@ -41,7 +41,7 @@ PyInstaller is only needed to build the EXE. Public domain (Unlicense).
 
 | Piece | Role |
 |---|---|
-| `packet_callsign()` | pull the worked call out of a `LookupInfo`/`ContactInfo`/`ContactReplace` XML packet (`RadioInfo`'s call is the local op's — ignored for the callsign) |
+| `packet_callsign()` | pull the worked call out of a `LookupInfo`/`ContactInfo`/`ContactReplace` XML packet (`RadioInfo`'s call is the local op's — ignored for the callsign). DXLog.net's "N1MM format" broadcast sends a byte-compatible `<lookupinfo>` on 12060 (on Space/Tab, pre-log, `<txfreq>` in tens of Hz) — parses with no change |
 | `packet_v4w()` | pull the callsign out of a VHFCtest4WIN `<V4W><QSOINLOG>` sharing packet (UDP 6767); empty `<CALLSIGN>` → `None` |
 | `packet_freq_mhz()` | operating frequency in MHz from `<rxfreq>`/`<txfreq>`/`<Freq>` (N1MM's *tens of Hz*, so ÷100000), any packet type; `None` if absent. Callbooker's HF/VHF switch |
 | `v4w_listener_loop()` | the 6767 listener (Callbooker, on unless `vhfctest_share=no`). Tries a normal UDP bind; VHFCtest4WIN holds 6767 with `SO_EXCLUSIVEADDRUSE`, so if it is already running the bind fails and it falls back to `_v4w_raw_listen` — a Windows `SIO_RCVALL` raw socket that needs the app run as admin. Feeds callsigns to `_on_v4w_call` → `_v4w_inbox` → `_poll_inbox` (drained on the GUI thread) → `_handle_call` |

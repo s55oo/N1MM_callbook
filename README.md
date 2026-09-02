@@ -15,8 +15,8 @@ It listens on **two feeds at once** and picks the right view per callsign:
 - a callsign from **VHFCtest4WIN** (its sharing broadcast, UDP **6767**,
   sent as you type) → the **VHF** view: first name + each source's
   **QRA/maidenhead locator** (`Hans - JN76HD`);
-- a callsign from **N1MM Logger+** (UDP **12060**) → the **operating
-  frequency** decides: **≥ 30 MHz → VHF**, **< 30 MHz → HF** (first name +
+- a callsign from **N1MM Logger+** or **DXLog.net** (UDP **12060**) → the
+  **operating frequency** decides: **≥ 30 MHz → VHF**, **< 30 MHz → HF** (first name +
   **CQ zone**, plus the **US state** for North-American calls –
   `Fred - MA/5`).
 
@@ -66,11 +66,21 @@ the `LookupInfo` / `ContactInfo` packet. It ignores the local operator's
 own call in `RadioInfo`, but **does** read the **frequency** from it as a
 fallback for the HF/VHF decision.
 
+### DXLog.net
+
+DXLog.net can send the **same `LookupInfo` / `ContactInfo` XML on 12060**,
+so Callbooker needs no extra setup once it is switched on. In the **Config**
+menu enable **Broadcast QSO data** and **…in N1MM format** (older builds:
+*Options → Configuration → Broadcast*); leave the target at
+`127.0.0.1:12060`. DXLog emits the `LookupInfo` packet on **Space/Tab** off
+the callsign field – before the QSO is logged – just like N1MM, so the
+pre-log check works the same way.
+
 ### Which view — HF or VHF?
 
 - A callsign from **VHFCtest4WIN** (6767) → **VHF** always.
-- A callsign from **N1MM** → by the **frequency**: N1MM puts it in the
-  `LookupInfo` / `ContactInfo` packet (`rxfreq`), and Callbooker also
+- A callsign from **N1MM / DXLog.net** → by the **frequency**: it is in the
+  `LookupInfo` / `ContactInfo` packet (`rxfreq` / `txfreq`), and Callbooker also
   tracks the last `RadioInfo` frequency as a fallback. **≥ 30 MHz → VHF**
   (locators), **< 30 MHz → HF** (name / zone / state).
 - With **no frequency** seen yet, Callbooker opens in the **view it was
@@ -127,7 +137,7 @@ Arguments:
 python Callbooker.py [--port 12060] [--config Callbooker.cfg]
 ```
 
-- `--port` – N1MM UDP port (default 12060).
+- `--port` – N1MM / DXLog.net UDP port (default 12060).
 - `--config` – path to the config file (defaults to `Callbooker.cfg` next
   to the exe/script).
 

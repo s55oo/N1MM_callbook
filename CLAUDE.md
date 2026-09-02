@@ -55,7 +55,7 @@ PyInstaller is only needed to build the EXEs. Public domain (Unlicense).
 | `normalize_call()` / `normalize_grid()` | sanitise the call; upper-case locators so a case-only difference isn't seen as a disagreement |
 | `_HttpPool` / `http_get()` | one kept-alive HTTPS connection per host, gzip, per-host lock, stale-connection retry, busy-host fallback to a one-shot connection. **All source fetches go through `http_get`.** |
 | `Cache` | JSON cache keyed by call. `put()` only marks dirty; `flush()` (driven from `_poll_inbox`, forced in `on_close`) writes at most once per `FLUSH_INTERVAL`. Stores only `_CACHE_FIELDS`. Prunes expired / wrong-`CACHE_SCHEMA` entries on load. `persist=False` (`cache_persist=no`) = in-memory only. |
-| `qrzcq_lookup` / `hamqth_lookup` / `qrz_lookup` / `qrzdb_lookup` | the sources. Each returns a dict with the same keys (`name qth grid class state cqzone country`) or `None` on any failure. `Cache` stores only `_CACHE_FIELDS` (the 5 the display reads). `qrz_lookup` needs paid QRZ XML creds; `qrzdb_lookup` (VHF-only) computes the grid from `cs_lat`/`cs_lon` on the public QRZ page. |
+| `qrzcq_lookup` / `hamqth_lookup` / `qrz_lookup` | the sources. Each returns a dict with the same keys (`name qth grid class state cqzone country`) or `None` on any failure. `Cache` stores only `_CACHE_FIELDS` (the 5 the display reads). **`qrz_lookup` is one source**: `_qrz_xml_lookup` (paid XML API, needs creds + a live subscription) when it can, else `_qrz_web_lookup` (grid from `cs_lat`/`cs_lon` on the public `/db/` page, no login) — never both. It sets `_QRZ_TIER` (`"xml"`/`"web"`) and `_QRZ_SUBEXP` for the self-test. |
 | `qrz_session_load()` / `_qrz_session_save()` | persist the QRZ XML session key to `qrz_session.json` so a restart skips the ~0.6 s re-login |
 | `load_config()` / `run()` | shared entry point — parse args + the `key=value` .cfg, build the app, run the Tk loop. Each `main()` is basically one `run()` call. `run(..., always_vhfctest=True)` forces the 6767 feed on regardless of `vhfctest_share`; `VHFcallbook` passes a *computed* bool there (feed on unless `vhfctest_share=no`). |
 | `CallbookApp` | the window + all lookup orchestration. Subclassed only by `VHFcallbookApp` (in `VHFcallbook.py`). |
@@ -113,7 +113,8 @@ SLOT_FIELDS   # HF ("state","cqzone");  VHF ("grid",)
 SLOT_SEP      # HF " " (name already has " - " after it);  VHF " - "
 SHOW_NAME     # HF True; VHF also True (name printed once, in front of the grids)
 DX_COUNTRY    # HF True (name -> "name (country)" for DX);  VHF False
-LOOKUP_CHAIN  # HF (qrzcq, hamqth); VHF adds qrzdb; qrz_lookup prepended by __init__ when creds exist
+LOOKUP_CHAIN  # the free sources (qrzcq, hamqth); a QRZ slot is prepended by __init__
+QRZ_WEB_FALLBACK  # base False (QRZ slot only with creds); True on VHF (public-page locator w/o login)
 VHFCTEST_CAPABLE  # base False; True on VHF/Callbooker — allows the 6767 feed (run() wires the 2nd listener)
 ```
 

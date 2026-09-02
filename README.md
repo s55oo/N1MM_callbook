@@ -30,11 +30,13 @@ state, the HF window shows the **operator name and country** followed by
 the **CQ zone**, e.g. `Hans (Germany) - 14`.
 
 The HF callbook pulls its **state, CQ zone** and name from up to **three
-sources**: **[QRZ.com XML](https://www.qrz.com/page/xml_data.html),
+sources**: **[QRZ.com](https://www.qrz.com),
 [QRZCQ.com](https://www.qrzcq.com) and
-[HamQTH.com](https://www.hamqth.com)**. They are queried at the same time;
-the slots are shown left-to-right in that order (QRZ XML left-most when
-your QRZ login is configured). Without QRZ credentials it runs the two
+[HamQTH.com](https://www.hamqth.com)**, queried at the same time and shown
+left-to-right in that order. **QRZ is one column** – the paid
+[XML API](https://www.qrz.com/page/xml_data.html) when your QRZ login is
+configured and the subscription is live, otherwise the public page as a
+fall-back (never both). Without QRZ credentials the HF app runs the two
 free sources.
 
 A **VHF variant** (`VHFcallbook.py` / `VHFcallbook.exe`) is also included.
@@ -52,14 +54,14 @@ The **locator sources**:
 
 | Source | How the locator is read |
 |---|---|
+| QRZ.com | the XML API (`grid` field) with a QRZ login + subscription, otherwise computed from the coordinates embedded in the public `https://www.qrz.com/db/<CALL>` page – **one column either way** |
 | QRZCQ.com | `Grid:` / `Locator:` row on `https://www.qrzcq.com/call/<CALL>` |
 | HamQTH.com | `Grid:` row on `https://www.hamqth.com/<CALL>` |
-| QRZ.com | computed from the station coordinates embedded in the public `https://www.qrz.com/db/<CALL>` page ("Grid square" in the Detail tab) |
 
-All locator sources are queried **in parallel** and each slot fills as
-soon as that source replies. With QRZ credentials configured the QRZ XML
-service is added as the left-most slot; without credentials the VHF app
-uses the three free locator sources.
+All sources are queried **in parallel** and each slot fills as soon as
+that source replies. On VHF the QRZ column is always present (the public
+page still yields the locator with no login); on HF it appears only with
+credentials.
 
 QRZCQ.com is a free public callbook that needs **no account and no API key** –
 each callsign has a page at `https://www.qrzcq.com/call/<CALL>` whose lookup
@@ -191,12 +193,14 @@ python VHFcallbook.py    [--port 12060] [--config VHFcallbook.cfg]
   a fast one: you might see `FRED - MA/5 … …` first, then the rest fill in
   to `FRED - MA/5 MA/5 MA/5`.
 - The slots are laid out left-to-right in a fixed order –
-  **QRZ.com XML, QRZCQ.com, HamQTH.com** (QRZ XML only when credentials are
-  configured; the **VHF variant** adds **QRZ.com public page** as a fourth
-  slot). The order is just the column layout, not a priority – every source
-  is fetched at the same time. When the values differ (e.g.
-  `MA/5 MA/4 MA/5`) you see it immediately and can decide which one is
-  right for the exchange.
+  **QRZ, QRZCQ.com, HamQTH.com**. QRZ is **one column**: the paid XML API
+  when your login works, else the public page (never both, so qrz.com
+  isn't queried twice). The QRZ column shows on HF only with credentials;
+  on VHF it is always there (the public page still gives the locator). The
+  order is just the column layout, not a priority – every source is
+  fetched at the same time. When the values differ (e.g. `MA/5 MA/4 MA/5`)
+  you see it immediately and can decide which one is right for the
+  exchange.
 - **When every source that answered agrees**, the text turns light green
   **and the repeated token collapses to one** – so `FRED - MA/5 MA/5 MA/5`
   shows as **`FRED - MA/5`** – a quick "you can trust this" signal. A
@@ -246,19 +250,20 @@ python VHFcallbook.py    [--port 12060] [--config VHFcallbook.cfg]
   line with the result and the round-trip time, e.g.
 
   ```
-  QRZ XML OK       521 ms
+  QRZ·xml OK       521 ms
   QRZCQ   OK       152 ms
   HamQTH  OK       236 ms
   ```
 
   `OK` = answered and parsed, `no data` = reachable but no record for the
-  test call, `FAIL` = network/HTTP error (that source is down). The text
+  test call, `FAIL` = network/HTTP error (that source is down). The **QRZ**
+  line shows which path it took – `QRZ·xml` (paid API) or `QRZ·web`
+  (public page fall-back) – and the footer summary adds the subscription
+  expiry, e.g. `self-test: 3/3 sources OK · QRZ XML sub to 2027`. The text
   turns light green when every source is `OK`. The result stays up for a
-  few seconds, then the window goes to its normal idle state (the footer
-  keeps a short `self-test: 3/3 sources OK` summary until the first
-  lookup). The test callsign defaults to **S55OO** (listed on every
-  source); set `selftest_call=` to another call if some of your sources
-  don't list it, or `selftest=no` to skip the test entirely.
+  few seconds, then the window goes idle (the footer summary stays until
+  the first lookup). The test callsign defaults to **S55OO**; set
+  `selftest_call=` to another call, or `selftest=no` to skip it.
 - **Fast lookups:** the connection to each source is kept alive and
   re-used between QSOs, and responses are gzip-compressed, so the ~90 ms
   TLS handshake isn't paid every time. In testing this cut the time to
@@ -288,7 +293,8 @@ cache_persist=yes                        (no = in-memory only, never writes)
 # selftest=yes
 # selftest_call=S55OO                    (call to probe; blank/selftest=no disables)
 
-# Optional - paid QRZ.com XML service (extra state / locator slot):
+# QRZ.com login - the QRZ column uses the paid XML API when this is set
+# and the subscription is live, otherwise the public page (locator only):
 # qrz_username=S55OO
 # qrz_password=YOUR_QRZ_PASSWORD
 
@@ -362,10 +368,11 @@ dev\test_render.py   – headless display-logic tests (no network)
 dev\bench_latency.py – lookup-latency benchmark
 ```
 
-> QRZ.com XML needs a **paid subscription** for full records. Even without
-> it, QRZ returns the US state (and a plain name/address) for a login, so
-> the HF app still gets its three state sources (QRZ XML, QRZCQ, HamQTH);
-> the VHF app's locators are all free (QRZCQ, HamQTH, QRZ public page).
+> The QRZ column uses the paid **XML API** (needs a subscription for the
+> full record) when your login works, and falls back to the public
+> `/db/` page (locator from the embedded coordinates – free, no login)
+> otherwise. It is never queried both ways. QRZCQ and HamQTH are always
+> free.
 
 ---
 
@@ -379,6 +386,14 @@ dev\bench_latency.py – lookup-latency benchmark
 > now. Older entries below that name the retired apps are historical; the
 > feature they describe lives in `VHFcallbook` today.
 
+- **v2.20 – QRZ is now one column.** The separate `QRZ XML` and `QRZ web`
+  slots are merged: the paid XML API when your QRZ login works and the
+  subscription is live, otherwise the public `/db/` page for the locator –
+  **never both**, so qrz.com isn't hit twice and a station no longer shows
+  two identical QRZ columns. The start-up self-test's QRZ line says which
+  path it took (`QRZ·xml` / `QRZ·web`) and the footer adds the
+  subscription expiry. On VHF the QRZ column is always present (public
+  page needs no login); on HF only with credentials.
 - **v2.20 – new: `Callbooker` 1.0** – the HF (`n1mm_callbook`) and VHF
   (`VHFcallbook`) apps in **one window** that picks the view per callsign:
   a **VHFCtest4WIN** callsign, or an N1MM one **≥ 30 MHz**, gets the VHF
@@ -386,8 +401,7 @@ dev\bench_latency.py – lookup-latency benchmark
   state view. The frequency comes from the N1MM packet (`rxfreq`) or the
   last `RadioInfo`; with no frequency yet it opens in the view it was last
   using (remembered between runs, HF on a first run). New engine helper
-  `packet_freq_mhz`; the two single-purpose apps are unchanged and still
-  shipped. New `Callbooker.cfg`.
+  `packet_freq_mhz`. New `Callbooker.cfg`.
 - **v2.19 – HF 2.17 / VHF 1.2** – **agreed `state/zone` collapses, and a
   bigger, width-aware font.** The HF window now does what the VHF one
   already did: when every source returns the **same state and CQ zone**,

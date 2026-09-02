@@ -36,6 +36,7 @@ Usage:
 __version__ = "1.0"
 
 import ctypes
+import functools
 import json
 import os
 import socket
@@ -120,10 +121,11 @@ class CallbookerApp(cb.CallbookApp):
     APP_TITLE = "Callbooker"
     VHFCTEST_CAPABLE = True
 
-    # Sources per view. The paid QRZ XML slot (when configured) is
-    # prepended to whichever of these is active - see _apply_mode.
+    # Free sources per view. A QRZ slot (XML API with credentials, else -
+    # in the VHF view - the locator off the public /db/ page) is prepended
+    # by _apply_mode.
     _HF_CHAIN = (cb.qrzcq_lookup, cb.hamqth_lookup)
-    _VHF_CHAIN = (cb.qrzcq_lookup, cb.hamqth_lookup, cb.qrzdb_lookup)
+    _VHF_CHAIN = (cb.qrzcq_lookup, cb.hamqth_lookup)
     LOOKUP_CHAIN = _HF_CHAIN  # base __init__ seeds from this; _apply_mode wins
 
     def __init__(self, root, *args, **kwargs):
@@ -161,7 +163,10 @@ class CallbookerApp(cb.CallbookApp):
             self.SLOT_SEP = " "
             self.DX_COUNTRY = True
             base = self._HF_CHAIN
-        chain = ([self._qrz_fn] if self._qrz_fn else []) + list(base)
+        # QRZ slot 0: the credentialled XML/web function when we have a
+        # login, else - VHF only - a web-page-only QRZ for the locator.
+        qrz = self._qrz_fn or (functools.partial(cb.qrz_lookup) if vhf else None)
+        chain = ([qrz] if qrz else []) + list(base)
         self.lookup_chain = tuple(chain)
         self.source_labels = tuple(cb.source_label(fn) for fn in self.lookup_chain)
 

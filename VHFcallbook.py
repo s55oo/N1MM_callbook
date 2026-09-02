@@ -125,10 +125,11 @@ class VHFcallbookApp(cb.CallbookApp):
     SLOT_SEP = " - "
     SHOW_NAME = True
     DX_COUNTRY = False        # locator-focused: no " (Country)" after the name
-    # Slot order: QRZCQ, HamQTH's "Grid:" row, then the locator computed
-    # from the coordinates on the public QRZ.com page. The paid QRZ XML
-    # service is prepended automatically when credentials are configured.
-    LOOKUP_CHAIN = (cb.qrzcq_lookup, cb.hamqth_lookup, cb.qrzdb_lookup)
+    # QRZ (slot 0, always present here - XML API with credentials, else the
+    # locator off the public /db/ page), then QRZCQ and HamQTH's "Grid:"
+    # rows.
+    QRZ_WEB_FALLBACK = True
+    LOOKUP_CHAIN = (cb.qrzcq_lookup, cb.hamqth_lookup)
 
     def _build(self):
         super()._build()

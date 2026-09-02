@@ -87,10 +87,9 @@ FONT_LADDER = (FONT_SIZE_BIG, 23, 20, 18, 16, 14, 12)
 PRECHECK_CALL = "S55OO"
 PRECHECK_HOLD_MS = 4000  # keep the finished result on screen this long
 SOURCE_LABELS = {
-    "qrz_lookup": "QRZ XML",
+    "qrz_lookup": "QRZ",
     "qrzcq_lookup": "QRZCQ",
     "hamqth_lookup": "HamQTH",
-    "qrzdb_lookup": "QRZ web",
 }
 
 
@@ -98,7 +97,7 @@ def source_label(fn):
     """Short human name for a lookup-chain entry.
 
     Unwraps the ``functools.partial`` that ``__init__`` builds for the
-    paid QRZ XML source so the self-test can label every slot.
+    QRZ source so the self-test can label every slot.
     """
     fn = getattr(fn, "func", fn)
     name = getattr(fn, "__name__", "")
@@ -733,14 +732,43 @@ def _qrz_login(username, password, timeout=15):
     return (root.findtext("Session/Key") or "").strip() or None, ""
 
 
+# Which path qrz_lookup last took: "xml" (paid XML API) or "web" (public
+# /db/ page). Read by the start-up self-test so it can show the QRZ status.
+_QRZ_TIER = ""
+_QRZ_SUBEXP = ""  # QRZ XML subscription expiry string, when known
+
+
 def qrz_lookup(call, username="", password="", timeout=15):
+    """QRZ.com lookup - **one** source, never two.
+
+    Uses the paid QRZ.com XML API when credentials are configured and the
+    subscription/session is usable; otherwise falls back to the public
+    ``/db/<CALL>`` page (the maidenhead locator computed from the
+    coordinates it embeds - no login, no account). Returns a dict like
+    ``qrzcq_lookup`` or ``None``. Sets the module ``_QRZ_TIER`` to the path
+    actually used.
+    """
+    global _QRZ_TIER
+    if username and password:
+        info = _qrz_xml_lookup(call, username, password, timeout)
+        if info is not None:
+            _QRZ_TIER = "xml"
+            return info
+    info = _qrz_web_lookup(call, timeout)
+    if info is not None:
+        _QRZ_TIER = "web"
+    return info
+
+
+def _qrz_xml_lookup(call, username, password, timeout=15):
     """Look up a callsign on the paid QRZ.com XML service.
 
     Needs a QRZ XML subscription; credentials come from the config file.
     Reuses the session key, re-logging in when it expired or the server
-    rejected it. Returns a dict like qrzcq_lookup (or None on failure),
-    so it can be used as another entry of the lookup chain.
+    rejected it. Returns a dict like qrzcq_lookup, or None on any failure
+    (no subscription, bad login, network error, no record).
     """
+    global _QRZ_SUBEXP
     if not username or not password:
         return None
     key = None
@@ -764,6 +792,7 @@ def qrz_lookup(call, username="", password="", timeout=15):
         root = ET.fromstring(raw)
     except ET.ParseError:
         return None
+    _QRZ_SUBEXP = (root.findtext("Session/SubExp") or "").strip()
     err = root.findtext("Error") or ""
     if err:
         if "session" in err.lower():
@@ -814,13 +843,14 @@ def maidenhead_from_latlon(lat, lon):
     return out
 
 
-def qrzdb_lookup(call, timeout=15):
+def _qrz_web_lookup(call, timeout=15):
     """Grab the locator from the public QRZ.com /db/<CALL> page.
 
-    QRZ only shows its full Detail tab ("Grid square") to logged-in users,
-    but every callsign page embeds the station's coordinates as
-    cs_lat / cs_lon - so the 6-char maidenhead locator can be computed
-    for free, without any account or subscription.
+    The QRZ fallback for when the paid XML API is not available. QRZ only
+    shows its full Detail tab ("Grid square") to logged-in users, but
+    every callsign page embeds the station's coordinates as cs_lat /
+    cs_lon - so the 6-char maidenhead locator can be computed for free,
+    without any account or subscription.
 
     Returns a dict in the same shape as qrzcq_lookup (grid filled in from
     the coordinates), or None on a network error.
@@ -985,6 +1015,10 @@ class CallbookApp:
     # Lookup sources run in order; every source's value is kept separately.
     # Variants can add more sources.
     LOOKUP_CHAIN = (qrzcq_lookup, hamqth_lookup)
+    # Give QRZ a slot even with no XML credentials (the public /db/ page
+    # still yields the locator). Off on HF - anonymous QRZ has nothing the
+    # HF view shows; on for the VHF apps, where the locator is the point.
+    QRZ_WEB_FALLBACK = False
     # Whether this variant can take the optional VHFCtest4WIN pre-log
     # callsign feed (see v4w_listener_loop). VHF only.
     VHFCTEST_CAPABLE = False
@@ -999,12 +1033,13 @@ class CallbookApp:
         self.win_file = win_file
         self.current = None
         self._debounce = None
-        # QRZ XML takes slot 0 (shown left-most) when credentials are
-        # present, otherwise the free sources run without it. All sources
-        # are queried in parallel, so each slot fills as soon as that
-        # source answers regardless of its position in the chain.
+        # QRZ takes slot 0 (shown left-most): the paid XML API when
+        # credentials are set, else the public /db/ page (locator only) if
+        # QRZ_WEB_FALLBACK is on for this app. All sources are queried in
+        # parallel, so each slot fills as soon as that source answers
+        # regardless of its position in the chain.
         chain = []
-        if qrz_username and qrz_password:
+        if (qrz_username and qrz_password) or self.QRZ_WEB_FALLBACK:
             chain.append(
                 functools.partial(
                     qrz_lookup, username=qrz_username, password=qrz_password
@@ -1026,6 +1061,7 @@ class CallbookApp:
         self._precheck = None       # per source: None = pending, (status, ms)
         self._precheck_inbox = []   # worker threads -> GUI, like _inbox
         self._precheck_active = False
+        self._qrz_tier = ""         # "xml" / "web" - which QRZ path the self-test hit
         self._slots = None
         self._pending_inds = set()
         self._font_cache = {}  # size -> tkfont.Font, for width measurement
@@ -1208,9 +1244,9 @@ class CallbookApp:
         # Fires every source at once (one thread each) so a slow source
         # never holds up a fast one; returns immediately. Each result is
         # posted to the GUI the moment that source answers; the slot index
-        # is kept, so the display still reads in chain order (QRZ XML,
-        # QRZCQ, HamQTH, ...) - it just fills in as fast as each source can
-        # reply instead of waiting for the whole chain.
+        # is kept, so the display still reads in chain order (QRZ, QRZCQ,
+        # HamQTH) - it just fills in as fast as each source can reply
+        # instead of waiting for the whole chain.
         def run(i, fn):
             try:
                 res = fn(call)
@@ -1245,6 +1281,8 @@ class CallbookApp:
                 status = "OK"            # answered and parsed to real fields
             else:
                 status = "no data"      # reachable, but no record for this call
+            if source_label(fn) == "QRZ":
+                self._qrz_tier = _QRZ_TIER  # "xml" / "web" - for the QRZ line
             self._precheck_inbox.append((i, status, ms))
 
         for i, fn in enumerate(self.lookup_chain):
@@ -1256,6 +1294,8 @@ class CallbookApp:
             return
         lines = []
         for lbl, v in zip(self.source_labels, self._precheck):
+            if lbl == "QRZ" and self._qrz_tier:
+                lbl = "QRZ·" + self._qrz_tier  # "QRZ·xml" / "QRZ·web"
             if v is None:
                 lines.append("{:<7} {}".format(lbl, SLOT_PENDING))
             else:
@@ -1288,6 +1328,10 @@ class CallbookApp:
             summary = "self-test: {} source(s) FAILED".format(fails)
         else:
             summary = "self-test: {}/{} sources OK".format(oks, len(results))
+        if self._qrz_tier == "web":
+            summary += "  ·  QRZ: web page (no XML sub)"
+        elif self._qrz_tier == "xml" and _QRZ_SUBEXP:
+            summary += "  ·  QRZ XML sub to " + _QRZ_SUBEXP.split()[-1]
         self.call_label.configure(text=summary)
         self.canvas.configure(bg=COLOR_IDLE)
         self.canvas.itemconfigure(

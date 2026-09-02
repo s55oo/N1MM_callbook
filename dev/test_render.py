@@ -6,6 +6,7 @@ drawn. A withdrawn Tk root is created only so _font_for can measure text
 with real font metrics (it picks the biggest size that fits the canvas
 width). Run:  python dev/test_render.py
 """
+import functools
 import os
 import sys
 import tempfile
@@ -55,6 +56,7 @@ def make(cls):
     app.canvas = FakeCanvas()
     app.main_id = 0
     app._font_cache = {}
+    app._qrz_tier = ""
     return app
 
 
@@ -244,21 +246,44 @@ def main():
                                    b"<mycall>S55OO</mycall></lookupinfo>"), None)
     ok &= check("freq: junk -> None", cb.packet_freq_mhz(b"not xml"), None)
 
+    # qrz_lookup: one source, XML first when credentialled else the web page
+    seen = []
+    _xml, _web = cb._qrz_xml_lookup, cb._qrz_web_lookup
+    cb._qrz_xml_lookup = lambda c, u, p, t=15: seen.append("xml") or {"grid": "AA00"}
+    cb._qrz_web_lookup = lambda c, t=15: seen.append("web") or {"grid": "BB11"}
+    try:
+        r_nocreds = cb.qrz_lookup("W1AW")
+        tier_nocreds = cb._QRZ_TIER
+        seen.clear()
+        r_creds = cb.qrz_lookup("W1AW", "u", "p")
+        tier_creds = cb._QRZ_TIER
+    finally:
+        cb._qrz_xml_lookup, cb._qrz_web_lookup = _xml, _web
+    ok &= check("qrz_lookup: no credentials -> web page only",
+                (r_nocreds["grid"], tier_nocreds), ("BB11", "web"))
+    ok &= check("qrz_lookup: credentials -> XML, web not called",
+                (r_creds["grid"], tier_creds, seen), ("AA00", "xml", ["xml"]))
+
     # Callbooker: the freq picks the HF vs VHF view, VHFCtest4WIN forces VHF
     import Callbooker as ckr
     cbk = ckr.CallbookerApp.__new__(ckr.CallbookerApp)
     cbk._vhf_mode = False
-    cbk._qrz_fn = None
+    cbk._qrz_fn = None  # no XML credentials
     cbk._apply_mode(False, force=True)
-    ok &= check("Callbooker: HF view slot fields",
+    ok &= check("Callbooker HF view, no creds -> no QRZ slot",
                 (cbk.SLOT_FIELDS, cbk.DX_COUNTRY,
                  tuple(cb.source_label(f) for f in cbk.lookup_chain)),
                 (("state", "cqzone"), True, ("QRZCQ", "HamQTH")))
     cbk._apply_mode(True)
-    ok &= check("Callbooker: VHF view slot fields + QRZ-web source added",
+    ok &= check("Callbooker VHF view, no creds -> web-only QRZ slot prepended",
                 (cbk.SLOT_FIELDS, cbk.SLOT_SEP, cbk.DX_COUNTRY,
                  tuple(cb.source_label(f) for f in cbk.lookup_chain)),
-                (("grid",), " - ", False, ("QRZCQ", "HamQTH", "QRZ web")))
+                (("grid",), " - ", False, ("QRZ", "QRZCQ", "HamQTH")))
+    cbk._qrz_fn = functools.partial(cb.qrz_lookup, username="x", password="y")
+    cbk._apply_mode(False, force=True)
+    ok &= check("Callbooker HF view, with creds -> QRZ slot present",
+                tuple(cb.source_label(f) for f in cbk.lookup_chain),
+                ("QRZ", "QRZCQ", "HamQTH"))
     ok &= check("Callbooker: >=30 MHz -> VHF", 144.3 >= ckr.VHF_ABOVE_MHZ, True)
     ok &= check("Callbooker: <30 MHz -> HF", 28.074 >= ckr.VHF_ABOVE_MHZ, False)
 
@@ -292,22 +317,26 @@ def main():
                 "{}{}".format(*m.groups()) if m else None, "+321+123")
 
     # start-up self-test: source labels + the per-line render
-    import functools
     ok &= check("source_label: plain function",
                 cb.source_label(cb.qrzcq_lookup), "QRZCQ")
     ok &= check("source_label: functools.partial unwrapped",
                 cb.source_label(functools.partial(cb.qrz_lookup, username="x")),
-                "QRZ XML")
+                "QRZ")
 
     pc = make(cb.CallbookApp)
     pc.current = None
     pc._precheck_active = True
-    pc.source_labels = ("QRZ XML", "QRZCQ", "HamQTH")
+    pc.source_labels = ("QRZ", "QRZCQ", "HamQTH")
     pc._precheck = [("OK", 312.0), ("no data", 181.4), None]
     pc._render_precheck()
     ok &= check("precheck: mixed line render",
                 pc.canvas.text,
-                "QRZ XML OK       312 ms\nQRZCQ   no data  181 ms\nHamQTH  …")
+                "QRZ     OK       312 ms\nQRZCQ   no data  181 ms\nHamQTH  …")
+    pc._qrz_tier = "xml"
+    pc._render_precheck()
+    ok &= check("precheck: QRZ line shows the tier",
+                pc.canvas.text.split("\n")[0], "QRZ·xml OK       312 ms")
+    pc._qrz_tier = ""
     pc._precheck = [("OK", 312.0), ("OK", 181.0), ("OK", 233.0)]
     ok &= check("precheck: all OK -> green",
                 (pc._render_precheck() or pc.canvas.fill), cb.TEXT_AGREE)

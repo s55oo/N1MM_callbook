@@ -1,7 +1,7 @@
 # N1MM Callbook – N1MM Logger+ Contest Callbook
 
-> **Version:** 2.16 (HF) / 1.20 (VHF) / 1.2 (VHFCtest4WIN) · Made by **S55OO** with AI assistance.
-> · **Public domain** – see [LICENSE](LICENSE).
+> **Version:** 2.16 (HF) / 1.20 (VHF) / 1.2 (VHFCtest4WIN) / 1.0 (VHFcallbook – merged VHF)
+> · Made by **S55OO** with AI assistance. · **Public domain** – see [LICENSE](LICENSE).
 
 A compact always-on-top window that listens to the N1MM Logger+ external
 UDP broadcast (XML, port **12060**) and automatically looks up the callsign
@@ -44,6 +44,16 @@ All locator sources are queried **in parallel** and each slot fills as
 soon as that source replies. With QRZ credentials configured the QRZ XML
 service is added as the left-most slot; without credentials the VHF app
 uses the three free locator sources.
+
+> **`VHFcallbook` (recommended for VHF)** merges `n1mm_VHFcallbook` and
+> `VHFctest4WinCallbook` into one window that listens on **both** the N1MM
+> Logger+ port (**12060**) **and** the VHFCtest4WIN sharing port
+> (**6767**) at the same time – whichever logger sends the callsign first
+> drives the identical locator lookup. Use it instead of picking one of
+> the two older VHF apps. See **section 1** (VHFCtest4WIN) for the 6767 /
+> UAC details – identical behaviour; `vhfctest_share=no` in
+> `VHFcallbook.cfg` turns the 6767 feed off. The older two apps are still
+> included for now but `VHFcallbook` replaces both.
 
 QRZCQ.com is a free public callbook that needs **no account and no API key** –
 each callsign has a page at `https://www.qrzcq.com/call/<CALL>` whose lookup
@@ -109,6 +119,9 @@ they all agree.
 - The same feed is also available as **`vhfctest_share=yes`** in
   `n1mm_VHFcallbook.cfg` if you would rather not run a second window
   (subject to the same elevation rule).
+- **`VHFcallbook`** (the merged app) has this feed **on by default** and
+  also keeps listening on the N1MM port, so one window covers both
+  loggers. Everything in this section applies to it unchanged.
 
 ---
 
@@ -122,26 +135,29 @@ HF callbook:
    or:  run:  n1mm_callbook.exe           (standalone executable)
 ```
 
-VHF locator variant:
+VHF locator lookup – **merged app, listens on 12060 *and* 6767**
+(recommended; replaces the two below):
 
 ```
-   or:  run:  pythonw n1mm_VHFcallbook.py (from source, no window)
-   or:  run:  n1mm_VHFcallbook.exe        (standalone executable)
+   or:  run:  pythonw VHFcallbook.py       (from source, no window)
+   or:  run:  VHFcallbook.exe              (standalone; prompts for UAC
+                                            when VHFCtest4WIN is already
+                                            running – see section 1)
 ```
 
-VHFCtest4WIN pre-log locator check (see section 1):
+Legacy VHF apps (still included; `VHFcallbook` does both):
 
 ```
-   or:  run:  pythonw VHFctest4WinCallbook.py  (from source, no window)
-   or:  run:  VHFctest4WinCallbook.exe         (standalone; prompts for
-                                                UAC when VHFCtest4WIN is
-                                                already running)
+   or:  run:  n1mm_VHFcallbook.exe         (N1MM feed only unless
+                                            vhfctest_share=yes)
+   or:  run:  VHFctest4WinCallbook.exe     (VHFCtest4WIN feed only)
 ```
 
 Arguments:
 
 ```
 python n1mm_callbook.py [--port 12060] [--config callbook.cfg]
+python VHFcallbook.py [--port 12060] [--config VHFcallbook.cfg]
 python n1mm_VHFcallbook.py [--port 12060] [--config n1mm_VHFcallbook.cfg]
 python VHFctest4WinCallbook.py [--config VHFctest4WinCallbook.cfg]
 ```
@@ -239,15 +255,16 @@ python VHFctest4WinCallbook.py [--config VHFctest4WinCallbook.cfg]
 
 ## 4. Configuration
 
-`callbook.cfg` (HF) / `n1mm_VHFcallbook.cfg` (VHF). Both are optional; the
-apps run with defaults when no `.cfg` exists. Templates are in the repo:
-`callbook.cfg.template` and `n1mm_VHFcallbook.cfg.template`.
+`callbook.cfg` (HF) / `VHFcallbook.cfg` (merged VHF app) – and, for the
+legacy apps, `n1mm_VHFcallbook.cfg` / `VHFctest4WinCallbook.cfg`. All are
+optional; the apps run with defaults when no `.cfg` exists. Each has a
+`*.cfg.template` in the repo to copy.
 
 ```
 [settings]
 udp_port=12060
 cache_days=30
-cache_file=callbook_cache.json           (VHF: n1mm_VHFcallbook_cache.json)
+cache_file=callbook_cache.json           (VHF: VHFcallbook_cache.json)
 cache_persist=yes                        (no = in-memory only, never writes)
 
 # Start-up self-test (query every source once on launch, show OK / time):
@@ -258,8 +275,10 @@ cache_persist=yes                        (no = in-memory only, never writes)
 # qrz_username=S55OO
 # qrz_password=YOUR_QRZ_PASSWORD
 
-# VHF only - VHFCtest4WIN pre-log callsign feed (see section 1):
-# vhfctest_share=no                      (yes = also listen on UDP 6767)
+# VHFCtest4WIN pre-log callsign feed, UDP 6767 (see section 1):
+#   VHFcallbook       - ON by default; vhfctest_share=no to disable
+#   n1mm_VHFcallbook  - OFF by default; vhfctest_share=yes to enable
+# vhfctest_share=yes
 # vhfctest_port=6767
 ```
 
@@ -267,11 +286,11 @@ cache_persist=yes                        (no = in-memory only, never writes)
   folder as the executable/script. The app also writes a small
   `*_window.json` (last window position) and `qrz_session.json` (QRZ XML
   session key) there – both are safe to delete and are gitignored.
-- Both `.cfg` files are **gitignored** – they hold your QRZ login in
+- The `.cfg` files are **gitignored** – they hold your QRZ login in
   **plain text**, so they are never committed and never land in a shared
   build. Only the `*.cfg.template` files (with placeholder credentials) are
   in the repo. Copy the matching template, fill in your QRZ credentials,
-  and rename to `callbook.cfg` / `n1mm_VHFcallbook.cfg`.
+  and rename to `callbook.cfg` / `VHFcallbook.cfg`.
 - The built `.exe` files do **not** embed the `.cfg`; they read it from
   disk at run time, so shipping an EXE never leaks your password.
 
@@ -288,11 +307,15 @@ REM HF callbook:
 python -m PyInstaller --onefile --windowed --name n1mm_callbook --manifest manifest.xml n1mm_callbook.py
 copy /Y dist\n1mm_callbook.exe n1mm_callbook.exe
 
-REM VHF locator variant:
+REM VHF locator lookup (merged app - N1MM + VHFCtest4WIN):
+python -m PyInstaller --onefile --windowed --name VHFcallbook --manifest manifest.xml VHFcallbook.py
+copy /Y dist\VHFcallbook.exe VHFcallbook.exe
+
+REM Legacy VHF locator variant:
 python -m PyInstaller --onefile --windowed --name n1mm_VHFcallbook --manifest manifest.xml n1mm_VHFcallbook.py
 copy /Y dist\n1mm_VHFcallbook.exe n1mm_VHFcallbook.exe
 
-REM VHFCtest4WIN pre-log locator check:
+REM Legacy VHFCtest4WIN pre-log locator check:
 python -m PyInstaller --onefile --windowed --name VHFctest4WinCallbook --manifest manifest.xml VHFctest4WinCallbook.py
 copy /Y dist\VHFctest4WinCallbook.exe VHFctest4WinCallbook.exe
 ```
@@ -308,24 +331,24 @@ computers together with the (optional) matching `.cfg`.
 ```
 n1mm_callbook.py     – main application, HF callbook (source code)
 n1mm_callbook.exe    – HF standalone executable (built, no Python needed)
-n1mm_VHFcallbook.py  – VHF locator variant (source code)
-n1mm_VHFcallbook.exe – VHF standalone executable (built, no Python needed)
-VHFctest4WinCallbook.py  – VHFCtest4WIN pre-log locator check (source code)
-VHFctest4WinCallbook.exe – VHFCtest4WIN variant, standalone executable
+VHFcallbook.py       – merged VHF locator app: N1MM (12060) + VHFCtest4WIN (6767)
+VHFcallbook.exe      – merged VHF app, standalone executable
+VHFcallbook.cfg.template – merged VHF app config template (copy to VHFcallbook.cfg)
+VHFcallbook.cfg      – merged VHF app config (gitignored; may hold QRZ login)
+n1mm_VHFcallbook.py  – legacy VHF locator variant (N1MM feed); source code
+n1mm_VHFcallbook.exe – legacy VHF standalone executable
+VHFctest4WinCallbook.py  – legacy VHFCtest4WIN pre-log locator check (source code)
+VHFctest4WinCallbook.exe – legacy VHFCtest4WIN variant, standalone executable
 callbook.cfg.template     – HF config template (copy to callbook.cfg)
 callbook.cfg              – HF config (gitignored; may hold QRZ login in plain text)
 callbook_cache.json       – HF local lookup cache (auto-created, gitignored)
-n1mm_VHFcallbook.cfg.template – VHF config template
-n1mm_VHFcallbook.cfg      – VHF config (gitignored; may hold QRZ login in plain text)
-n1mm_VHFcallbook_cache.json – VHF local lookup cache (auto-created, gitignored)
-VHFctest4WinCallbook.cfg.template – VHFCtest4WIN variant config template
-VHFctest4WinCallbook.cfg  – VHFCtest4WIN variant config (gitignored)
-VHFctest4WinCallbook_cache.json – VHFCtest4WIN variant lookup cache (auto, gitignored)
+n1mm_VHFcallbook.cfg.template / VHFctest4WinCallbook.cfg.template – legacy app templates
+*_cache.json         – per-app local lookup cache (auto-created, gitignored)
 *_window.json        – last window position per app (auto, gitignored)
 qrz_session.json     – cached QRZ XML session key (auto-created, gitignored)
 Callbook.bat         – source launcher (no console)
 manifest.xml         – PyInstaller manifest (common controls)
-n1mm_callbook.spec, n1mm_VHFcallbook.spec, VHFctest4WinCallbook.spec – PyInstaller build settings
+*.spec               – PyInstaller build settings (one per app)
 dist\                – PyInstaller output
 CLAUDE.md            – developer notes (architecture, gotchas, release steps)
 dev\test_render.py   – headless display-logic tests (no network)
@@ -341,6 +364,17 @@ dev\bench_latency.py – lookup-latency benchmark
 
 ## 7. Changelog
 
+- **New: VHFcallbook 1.0** – the two VHF apps merged into **one window**.
+  `VHFcallbook` listens on **both** the N1MM Logger+ port (**12060**) and
+  the VHFCtest4WIN sharing port (**6767**) at the same time, so whichever
+  logger sends the callsign first drives the same side-by-side locator
+  lookup – no more choosing between `n1mm_VHFcallbook` and
+  `VHFctest4WinCallbook`. The 6767 feed is **on by default** (one UAC
+  prompt if VHFCtest4WIN already holds the port, exactly as before;
+  `vhfctest_share=no` in `VHFcallbook.cfg` turns it off). New
+  `VHFcallbook.cfg` / `VHFcallbook_cache.json`. The engine, the HF app and
+  the two legacy VHF apps are **unchanged** and still shipped for now;
+  `VHFcallbook` replaces both of them.
 - **2.16 (HF) / 1.20 (VHF) / 1.2 (VHFctest4WIN)** – **VHF: operator name +
   agreed-locator collapse**. The VHF windows (`n1mm_VHFcallbook` and
   `VHFctest4WinCallbook`) now print the **operator name** in front of the

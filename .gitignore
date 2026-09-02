@@ -3,6 +3,7 @@ __pycache__/
 callbook.cfg
 n1mm_VHFcallbook.cfg
 VHFctest4WinCallbook.cfg
+VHFcallbook.cfg
 *_cache.json
 *_window.json
 qrz_session.json

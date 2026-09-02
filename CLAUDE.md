@@ -17,11 +17,21 @@ obvious and the operator picks the right value for the exchange.
   source, with the operator name in front; when every source that answered
   agrees the row collapses to one locator in a larger green font
   (`Hans - JN76HD`). A ~30-line subclass of the HF app's `CallbookApp`.
-- **VHFCtest4WIN** (`VHFctest4WinCallbook.py`, v1.0): the VHF app fed from
+- **VHFCtest4WIN** (`VHFctest4WinCallbook.py`, v1.x): the VHF app fed from
   **VHFCtest4WIN**'s multi-op sharing broadcast (UDP 6767) instead of an
   N1MM packet, so the lookup runs *as the callsign is typed*, pre-log. A
   ~20-line subclass of `VHFApp` that calls `run(..., always_vhfctest=True)`.
   The same feed is a `vhfctest_share=yes` option on the plain VHF app.
+- **VHFcallbook** (`VHFcallbook.py`, v1.x): the **merged** VHF app — a
+  `VHFApp` subclass that listens on **both** 12060 and 6767 at once. It
+  supersedes `n1mm_VHFcallbook` + `VHFctest4WinCallbook` (both kept for
+  now, to be dropped in a later release). `main()` reads `vhfctest_share`
+  (**default yes** here, vs. no on the plain VHF app) *before* the GUI via
+  `_wants_v4w_feed()` so the UAC self-relaunch (copied from
+  `VHFctest4WinCallbook`, but now forwarding all argv) can be skipped when
+  the feed is off, then calls `run(..., always_vhfctest=<that bool>)`. No
+  engine change was needed — passing the computed bool as `always_vhfctest`
+  covers both "force on" and "off unless cfg opts in".
 
 Pure Python standard library — no third-party runtime dependencies. The
 VHFCtest4WIN raw-capture (`_v4w_raw_listen`, a Windows `SIO_RCVALL`
@@ -43,8 +53,8 @@ PyInstaller is only needed to build the EXEs. Public domain (Unlicense).
 | `Cache` | JSON cache keyed by call. `put()` only marks dirty; `flush()` (driven from `_poll_inbox`, forced in `on_close`) writes at most once per `FLUSH_INTERVAL`. Stores only `_CACHE_FIELDS`. Prunes expired / wrong-`CACHE_SCHEMA` entries on load. `persist=False` (`cache_persist=no`) = in-memory only. |
 | `qrzcq_lookup` / `hamqth_lookup` / `qrz_lookup` / `qrzdb_lookup` | the sources. Each returns a dict with the same keys (`name qth grid class state cqzone country`) or `None` on any failure. `Cache` stores only `_CACHE_FIELDS` (the 5 the display reads). `qrz_lookup` needs paid QRZ XML creds; `qrzdb_lookup` (VHF-only) computes the grid from `cs_lat`/`cs_lon` on the public QRZ page. |
 | `qrz_session_load()` / `_qrz_session_save()` | persist the QRZ XML session key to `qrz_session.json` so a restart skips the ~0.6 s re-login |
-| `load_config()` / `run()` | shared entry point — parse args + the `key=value` .cfg, build the app, run the Tk loop. Both `main()` functions are one call to `run()`. |
-| `CallbookApp` | the window + all lookup orchestration. Subclassed by `VHFApp`. |
+| `load_config()` / `run()` | shared entry point — parse args + the `key=value` .cfg, build the app, run the Tk loop. Each `main()` is basically one `run()` call. `run(..., always_vhfctest=True)` forces the 6767 feed on regardless of `vhfctest_share`; `VHFcallbook` passes a *computed* bool there (feed on unless `vhfctest_share=no`). |
+| `CallbookApp` | the window + all lookup orchestration. Subclassed by `VHFApp` → `VHFctest4WinApp` / `VHFcallbookApp`. |
 
 ### CallbookApp lookup flow
 
@@ -125,20 +135,25 @@ VHFCTEST_CAPABLE  # base False; True on VHFApp — allows the vhfctest_share 676
 restored on start — position only, not size), `qrz_session.json` (QRZ XML
 session key). They live next to the `.cfg`/exe.
 
-**Never commit `callbook.cfg` / `n1mm_VHFcallbook.cfg` /
-`VHFctest4WinCallbook.cfg`** — they hold the QRZ login in plain text. Only
-`*.cfg.template` (placeholders) is tracked.
+**Never commit `callbook.cfg` / `VHFcallbook.cfg` /
+`n1mm_VHFcallbook.cfg` / `VHFctest4WinCallbook.cfg`** — they hold the QRZ
+login in plain text. Only `*.cfg.template` (placeholders) is tracked.
 
 ## Build
 
 ```bat
 python -m PyInstaller --onefile --windowed --name n1mm_callbook --manifest manifest.xml --noconfirm n1mm_callbook.py
+python -m PyInstaller --onefile --windowed --name VHFcallbook --manifest manifest.xml --noconfirm VHFcallbook.py
 python -m PyInstaller --onefile --windowed --name n1mm_VHFcallbook --manifest manifest.xml --noconfirm n1mm_VHFcallbook.py
 python -m PyInstaller --onefile --windowed --name VHFctest4WinCallbook --manifest manifest.xml --noconfirm VHFctest4WinCallbook.py
 copy /Y dist\n1mm_callbook.exe .
+copy /Y dist\VHFcallbook.exe .
 copy /Y dist\n1mm_VHFcallbook.exe .
 copy /Y dist\VHFctest4WinCallbook.exe .
 ```
+
+(`VHFcallbook` is the shipping VHF app; the other two are legacy, kept
+until a later release.)
 
 ## Release ritual
 
@@ -149,21 +164,24 @@ only — no version bump, no release.
 Full ritual:
 
 1. Bump `__version__` in the changed app files + the `USER_AGENT` in
-   `n1mm_callbook.py`. HF (~2.x), VHF (~1.x) and VHFctest4WinCallbook
-   (~1.x) carry independent numbers; a shared-engine change bumps all
-   three even when a variant's behaviour is unchanged.
+   `n1mm_callbook.py`. HF (~2.x), VHFcallbook (~1.x), n1mm_VHFcallbook
+   (~1.x) and VHFctest4WinCallbook (~1.x) carry independent numbers; a
+   change to the shared engine (`n1mm_callbook.py`) bumps every app even
+   when a variant's behaviour is unchanged. A change confined to one app
+   file bumps only that app. (v1.0 of `VHFcallbook` added no engine change
+   at all — it only combines existing hooks — so nothing else bumped.)
 2. README: version banner near the top + a new entry at the top of
    `## 7. Changelog`.
-3. Rebuild all three EXEs, copy to repo root (`--noconfirm` also rewrites
-   the `.spec` files — leave those, they're unchanged content).
+3. Rebuild the affected EXEs, copy to repo root (`--noconfirm` also
+   rewrites the `.spec` files — leave those, they're unchanged content).
 4. `git grep` for your QRZ username / password → confirm no real
    credential reached a tracked file.
 5. Commit straight to `main` (no branch), terse semicolon-joined message.
 6. Push.
 7. Release: `gh` authenticated via `GH_TOKEN` env only (never
    `gh auth login`), tag `main`, then
-   `gh release create vX.Y --verify-tag --latest` attaching the three
-   EXEs, the three `*.cfg.template` files and `LICENSE`.
+   `gh release create vX.Y --verify-tag --latest` attaching the EXEs, the
+   `*.cfg.template` files and `LICENSE`.
 
 ## dev/
 

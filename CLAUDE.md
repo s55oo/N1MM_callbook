@@ -88,9 +88,10 @@ by `SLOT_SEP`; an empty slot is `SLOT_EMPTY` (`·`), a pending one
 `SLOT_PENDING` (`…`). When `all_done` and every real value matches (>=2 of
 them) the text fill is `TEXT_AGREE` (light green) instead of `TEXT_DEFAULT`
 (`agree`). When `agree` **and** `COLLAPSE_ON_AGREE` (on for every app),
-that one value is shown once instead of `SLOT_SEP`-joined, and – unless
-the name pushes the line past `FONT_BIG_MAXLEN` – drawn at `FONT_SIZE_BIG`
-instead of the usual length-based `_font_for`.
+that one value is shown once instead of `SLOT_SEP`-joined. The font is
+`FONT_SIZE_BIG` for **any** result line `<= FONT_BIG_MAXLEN` chars (the
+collapsed token, but also a short disagreement / partial answer), else
+the length-based `_font_for`.
 
 ### Class attributes `VHFcallbookApp` overrides (base = HF behaviour)
 

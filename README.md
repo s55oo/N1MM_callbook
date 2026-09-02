@@ -167,18 +167,19 @@ python VHFcallbook.py   [--port 12060] [--config VHFcallbook.cfg]
   `MA/5 MA/4 MA/5`) you see it immediately and can decide which one is
   right for the exchange.
 - **When every source that answered agrees**, the text turns light green
-  **and the repeated token collapses to one, in a larger font** – so
-  `FRED - MA/5 MA/5 MA/5` shows as **`FRED - MA/5`** – a quick "you can
-  trust this" signal. A disagreement (`FRED - MA/5 MA/4 MA/5`), or a
-  source that returned only part (`MA` vs `MA/5`), keeps every slot
-  visible. (If the name makes the collapsed line too long for the window
-  it stays at the normal size.)
+  **and the repeated token collapses to one** – so `FRED - MA/5 MA/5 MA/5`
+  shows as **`FRED - MA/5`** – a quick "you can trust this" signal. A
+  disagreement (`FRED - MA/5 MA/4 MA/5`), or a source that returned only
+  part (`MA` vs `MA/5`), keeps every slot visible.
+- **The font is as large as the line allows.** Any result that fits –
+  the collapsed token, but also a short two-source disagreement or partial
+  answer – is drawn in a **big font**; longer lines shrink automatically
+  to fit the window.
 - For a **US station** the main area shows the **shortest operator name**
   (printed once) followed by the **`state/zone`** token – one per source
-  when they differ, or a single larger one when they agree. A slot shows
-  just the state when that source has no CQ zone (`MA`), just the zone for
-  a DX-style entry, or `·` when it returned neither. The font shrinks
-  automatically for long text.
+  when they differ, a single one when they agree. A slot shows just the
+  state when that source has no CQ zone (`MA`), just the zone for a
+  DX-style entry, or `·` when it returned neither.
 - For a **non-US (DX) station** there is no US state, so the HF window
   shows the **operator name and country** followed by the **CQ zone**,
   e.g. `Hans (Germany) - 14` (or `Hans (Germany) - 14 14` when the sources
@@ -341,14 +342,15 @@ dev\bench_latency.py – lookup-latency benchmark
 > now. Older entries below that name the retired apps are historical; the
 > feature they describe lives in `VHFcallbook` today.
 
-- **v2.19 – HF 2.17 / VHF 1.2** – **agreed `state/zone` collapses too.**
-  The HF window now does what the VHF one already did: when every source
-  that answered returns the **same state and CQ zone**, the repeated
-  `state/zone` token merges into one, shown in a **larger font**
-  (`Fred - MA/5 MA/5 MA/5` → `Fred - MA/5`), still green. A disagreement,
-  or a partial answer (`MA` vs `MA/5`), keeps every slot visible. Shared
-  `COLLAPSE_ON_AGREE` engine flag – now on for both apps; VHF behaviour
-  unchanged.
+- **v2.19 – HF 2.17 / VHF 1.2** – **agreed `state/zone` collapses, and a
+  bigger font.** The HF window now does what the VHF one already did: when
+  every source returns the **same state and CQ zone**, the repeated
+  `state/zone` token merges into one (`Fred - MA/5 MA/5 MA/5` →
+  `Fred - MA/5`), still green (shared `COLLAPSE_ON_AGREE` engine flag – now
+  on for both apps). And the **large font is no longer collapse-only** –
+  any result line that fits the window (the collapsed token, but also a
+  short two-source disagreement or partial answer) is drawn big; longer
+  lines shrink to fit as before.
 - **v2.18 / `VHFcallbook` 1.1** – `n1mm_VHFcallbook` and
   `VHFctest4WinCallbook` **deleted** (source, EXEs, config templates, spec
   files). `VHFcallbook` already did everything both did – a single window

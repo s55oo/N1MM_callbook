@@ -69,10 +69,10 @@ SLOT_PENDING = "…"  # a source is still being queried ("…")
 FONT_SIZE_NAME = 18
 FONT_SIZE_FOOTER = 10
 FONT_SIZES = [(14, 18), (24, 15), (34, 13), (9999, 11)]
-# When the VHF view collapses to a single agreed locator (COLLAPSE_ON_AGREE)
-# it is drawn ~two steps larger than the normal 18 pt - unless the operator
-# name in front of it pushes the line past FONT_BIG_MAXLEN characters, in
-# which case the usual length-based sizing is used so it still fits.
+# Any result line that fits in FONT_BIG_MAXLEN characters is drawn at this
+# size (~two steps larger than the normal 18 pt) - the collapsed single
+# token when every source agrees, but also a short disagreement or partial
+# answer. Longer lines fall back to the length-based FONT_SIZES ladder.
 FONT_SIZE_BIG = 26
 FONT_BIG_MAXLEN = 16
 
@@ -1380,12 +1380,14 @@ class CallbookApp:
         # "…" and one that answered with nothing shows "·", so results
         # appear as they arrive. When every source that answered agrees the
         # text turns light green and (COLLAPSE_ON_AGREE) the repeated value
-        # collapses to one token in a larger font. Example final lines:
-        #   HF, sources differ:  "Dave - MA/5 MA/4 MA/5"  (state/zone per source)
+        # collapses to one token. Any line short enough (FONT_BIG_MAXLEN)
+        # gets the large font, collapsed or not. Example final lines:
         #   HF, all agree:       "Dave - MA/5"            (collapsed, big, green)
-        #   HF, DX all agree:    "Hans (Germany) - 14"
-        #   VHF, sources differ: "Hans - JN76GB - JN76HD - JN76HD"
+        #   HF, 2 sources differ:"Dave - MA/5 MA/4"       (big - still fits)
+        #   HF, 3 sources differ:"Dave - MA/5 MA/4 MA/5"  (too long -> ladder)
+        #   HF, DX all agree:    "Hans (Germany) - 14"    (too long -> ladder)
         #   VHF, all agree:      "Hans - JN76HD"          (collapsed, big, green)
+        #   VHF, sources differ: "Hans - JN76GB - JN76HD - JN76HD"  (-> ladder)
         finished = [slots[i] for i in range(len(slots)) if i not in pending]
         any_data = any(self._source_value(s) for s in finished if s)
         vals = []
@@ -1402,8 +1404,8 @@ class CallbookApp:
         # (and there are at least two), the operator can trust it: green.
         real_vals = [v for v in vals if v not in (SLOT_EMPTY, SLOT_PENDING)]
         agree = all_done and len(real_vals) >= 2 and len(set(real_vals)) == 1
-        # VHF: when they all agree, show the value once (larger) instead of
-        # "JN76HD - JN76HD - JN76HD".
+        # When they all agree, show the value once (larger) instead of
+        # "MA/5 MA/5 MA/5" / "JN76HD - JN76HD - JN76HD".
         collapsed = agree and self.COLLAPSE_ON_AGREE
         fill = TEXT_DEFAULT
         big = False
@@ -1430,7 +1432,10 @@ class CallbookApp:
             bg = COLOR_ACTIVE
             if agree:
                 fill = TEXT_AGREE
-            big = collapsed and len(text) <= FONT_BIG_MAXLEN
+            # Use the large font for any result line short enough to fit -
+            # the collapsed single token, but also a short disagreement or
+            # partial answer. Longer lines fall back to length-based sizing.
+            big = len(text) <= FONT_BIG_MAXLEN
         elif not all_done:
             text = SLOT_PENDING
             bg = COLOR_ACTIVE

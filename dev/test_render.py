@@ -60,6 +60,7 @@ def main():
 
     US = {"name": "Fred", "state": "MA", "cqzone": "5", "country": "United States"}
     US2 = {"name": "Frederick", "state": "MA", "cqzone": "5", "country": "United States"}
+    USct = {"name": "Fred", "state": "CT", "cqzone": "5", "country": "United States"}
     USnz = {"name": "Fred", "state": "MA", "cqzone": "", "country": "United States"}
     DL = {"name": "Hans", "state": "HE", "cqzone": "14", "country": "Germany"}
     DX = {"name": "Hans", "state": "", "cqzone": "14", "country": "Germany"}
@@ -82,10 +83,16 @@ def main():
                 r(hf, [US, US2, US]), "Fred - MA/5")
     ok &= check("HF all agree -> collapsed line uses the big font",
                 rsize(hf, [US, US2, US]), cb.FONT_SIZE_BIG)
+    ok &= check("HF short disagreement (fits) -> big font, every slot shown",
+                r(hf, [US, USct]), "Fred - MA/5 CT/5")
+    ok &= check("HF short disagreement -> big font",
+                rsize(hf, [US, USct]), cb.FONT_SIZE_BIG)
+    ok &= check("HF short partial (fits) -> big font",
+                (r(hf, [US, USnz]), rsize(hf, [US, USnz])), ("Fred - MA/5 MA", cb.FONT_SIZE_BIG))
+    ok &= check("HF long disagreement -> falls back to the ladder",
+                rsize(hf, [US, USct, US]) != cb.FONT_SIZE_BIG, True)
     ok &= check("HF US, one source has no zone -> no collapse",
                 r(hf, [US, USnz, US]), "Fred - MA/5 MA MA/5")
-    ok &= check("HF US, one source has no zone -> normal font",
-                rsize(hf, [US, USnz, US]) != cb.FONT_SIZE_BIG, True)
     ok &= check("HF US, 2 slots pending", r(hf, [US, None, None], {1, 2}), "Fred - MA/5 … …")
     ok &= check("HF DX, foreign state dropped, zones agree -> collapse",
                 r(hf, [DL, DX, DX]), "Hans (Germany) - 14")
@@ -104,11 +111,15 @@ def main():
                 r(vh, [{"grid": "JN76HD", "name": "Hans"}] * 3), "Hans - JN76HD")
     ok &= check("VHF all agree -> collapsed line uses the big font",
                 rsize(vh, [{"grid": "JN76HD", "name": "Hans"}] * 3), cb.FONT_SIZE_BIG)
-    ok &= check("VHF disagree -> normal length-based font",
+    ok &= check("VHF long disagreement -> normal length-based font",
                 rsize(vh, [{"grid": "JN76HD", "name": "Hans"},
                            {"grid": "JN76GB", "name": "Hans"},
                            {"grid": "JN76HD", "name": "Hans"}]) != cb.FONT_SIZE_BIG,
                 True)
+    ok &= check("VHF short disagreement (fits) -> big font, both slots shown",
+                (r(vh, [{"grid": "JN76HD"}, {"grid": "JN76GB"}]),
+                 rsize(vh, [{"grid": "JN76HD"}, {"grid": "JN76GB"}])),
+                ("JN76HD - JN76GB", cb.FONT_SIZE_BIG))
     ok &= check("VHF collapsed but long name -> still one locator",
                 r(vh, [{"grid": "JN76HD", "name": "Wolfgang-Dietrich"}] * 3),
                 "Wolfgang-Dietrich - JN76HD")

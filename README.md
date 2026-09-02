@@ -108,10 +108,13 @@ Only `Callbooker` has both views; `n1mm_callbook` is always HF and
 - When no frequency has been seen yet, `Callbooker` opens in the **view it
   was last using** (remembered between runs; HF on a first run).
 
-The **VHF** view shows the operator name + each source's QRA locator; the
-**HF** view shows the name + `state/zone` (state only for North-American
-calls). Everything else – parallel sources, the agree/collapse behaviour,
-the cache, the self-test – is identical in both.
+The **VHF** view shows the first name + each source's QRA locator; the
+**HF** view shows the first name + `state/zone` (state only for
+North-American calls). `Callbooker` never adds the country after the
+name in either view – the CQ zone is the multiplier that matters. (The
+stand-alone `n1mm_callbook` still shows `name (Country) - zone` for DX.)
+Everything else – parallel sources, the agree/collapse behaviour, the
+cache, the self-test – is identical in both.
 
 ### The VHFCtest4WIN feed (6767)
 
@@ -389,7 +392,9 @@ dev\bench_latency.py – lookup-latency benchmark
 - **v2.20 – name is the first name only.** The displayed name is trimmed
   to its first word (`Goran Andric` → `Goran`, `ARRL HQ OPERATORS CLUB` →
   `ARRL`) – a contest exchange never wants the surname or a club's full
-  title.
+  title. `Callbooker` also drops the ` (Country)` after a DX name in the
+  HF view (`Radio (Slovenia) - 15` → `Radio - 15`); the CQ zone is the
+  multiplier. The stand-alone `n1mm_callbook` still shows the country.
 - **v2.20 – QRZ is now one column.** The separate `QRZ XML` and `QRZ web`
   slots are merged: the paid XML API when your QRZ login works and the
   subscription is live, otherwise the public `/db/` page for the locator –

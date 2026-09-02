@@ -276,10 +276,10 @@ def main():
     cbk._vhf_mode = False
     cbk._qrz_fn = None  # no XML credentials
     cbk._apply_mode(False, force=True)
-    ok &= check("Callbooker HF view, no creds -> no QRZ slot",
+    ok &= check("Callbooker HF view, no creds -> no QRZ slot, no DX country",
                 (cbk.SLOT_FIELDS, cbk.DX_COUNTRY,
                  tuple(cb.source_label(f) for f in cbk.lookup_chain)),
-                (("state", "cqzone"), True, ("QRZCQ", "HamQTH")))
+                (("state", "cqzone"), False, ("QRZCQ", "HamQTH")))
     cbk._apply_mode(True)
     ok &= check("Callbooker VHF view, no creds -> web-only QRZ slot prepended",
                 (cbk.SLOT_FIELDS, cbk.SLOT_SEP, cbk.DX_COUNTRY,

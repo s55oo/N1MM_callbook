@@ -120,6 +120,7 @@ class CallbookerApp(cb.CallbookApp):
     VERSION = __version__
     APP_TITLE = "Callbooker"
     VHFCTEST_CAPABLE = True
+    DX_COUNTRY = False  # name only, no " (Country)" - see _apply_mode
 
     # Free sources per view. A QRZ slot (XML API with credentials, else -
     # in the VHF view - the locator off the public /db/ page) is prepended
@@ -153,15 +154,16 @@ class CallbookerApp(cb.CallbookApp):
         if vhf == self._vhf_mode and not force:
             return
         self._vhf_mode = vhf
+        # No " (Country)" after the name in either view - the CQ zone is
+        # the multiplier that matters and the name stays short.
+        self.DX_COUNTRY = False
         if vhf:
             self.SLOT_FIELDS = ("grid",)
             self.SLOT_SEP = " - "
-            self.DX_COUNTRY = False
             base = self._VHF_CHAIN
         else:
             self.SLOT_FIELDS = ("state", "cqzone")
             self.SLOT_SEP = " "
-            self.DX_COUNTRY = True
             base = self._HF_CHAIN
         # QRZ slot 0: the credentialled XML/web function when we have a
         # login, else - VHF only - a web-page-only QRZ for the locator.

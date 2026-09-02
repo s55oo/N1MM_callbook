@@ -90,7 +90,8 @@ sources agree.
 `SLOT_FIELDS` into one `a/b` token per slot; the `state` field is dropped
 when the source's country is non-US (`_US_NAMES`), but `cqzone` is kept.
 `_is_dx` decides the `name (country)` vs `name` prefix – only consulted
-when `DX_COUNTRY` is set (HF; the VHF apps turn it off). Slots are joined
+when `DX_COUNTRY` is set (only `n1mm_callbook`; VHF and `Callbooker` turn
+it off - name stays bare, the CQ zone is the multiplier). Slots are joined
 by `SLOT_SEP`; an empty slot is `SLOT_EMPTY` (`·`), a pending one
 `SLOT_PENDING` (`…`). When `all_done` and every real value matches (>=2 of
 them) the text fill is `TEXT_AGREE` (light green) instead of `TEXT_DEFAULT`
@@ -112,7 +113,7 @@ APP_TITLE
 SLOT_FIELDS   # HF ("state","cqzone");  VHF ("grid",)
 SLOT_SEP      # HF " " (name already has " - " after it);  VHF " - "
 SHOW_NAME     # HF True; VHF also True — _best_name picks the shortest candidate, then its first word only, printed once in front
-DX_COUNTRY    # HF True (name -> "name (country)" for DX);  VHF False
+DX_COUNTRY    # n1mm_callbook True (name -> "name (country)" for DX); VHF + Callbooker False
 LOOKUP_CHAIN  # the free sources (qrzcq, hamqth); a QRZ slot is prepended by __init__
 QRZ_WEB_FALLBACK  # base False (QRZ slot only with creds); True on VHF (public-page locator w/o login)
 VHFCTEST_CAPABLE  # base False; True on VHF/Callbooker — allows the 6767 feed (run() wires the 2nd listener)

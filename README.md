@@ -23,6 +23,13 @@ It listens on **two feeds at once** and picks the right view per callsign:
 So one window covers an HF station, a VHF station, and VHFCtest4WIN's
 pre-log check – no switching apps or modes.
 
+| HF view (first name + CQ zone) | VHF view (first name + locator) |
+|---|---|
+| ![Callbooker, HF view](docs/callbooker-hf.png) | ![Callbooker, VHF view](docs/callbooker-vhf.png) |
+
+Both shots show the collapsed all-agree state – every source returned the
+same value, so the row is a single larger green token.
+
 ### Sources
 
 | Source | Free? | What it gives |
@@ -261,6 +268,7 @@ Callbooker_window.json  – last window position + view (auto-created, gitignore
 qrz_session.json        – cached QRZ XML session key   (auto-created, gitignored)
 LICENSE                 – The Unlicense (public domain)
 CLAUDE.md               – developer notes (architecture, gotchas, release steps)
+docs/callbooker-*.png   – screenshots used in this README
 dev/test_render.py      – headless display-logic tests (no network)
 dev/bench_latency.py    – lookup-latency benchmark
 dev/*.py, dev/*.md      – VHFCtest4WIN reverse-engineering notes and sniff tools

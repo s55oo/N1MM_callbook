@@ -1,16 +1,24 @@
 # SPDX-License-Identifier: Unlicense
 """Headless checks for CallbookApp._render_slots and the cache schema.
 
-No network, no real Tk window - a fake canvas captures the text that would
-be drawn. Run:  python dev/test_render.py
+No network and no visible window - a fake canvas captures what would be
+drawn. A withdrawn Tk root is created only so _font_for can measure text
+with real font metrics (it picks the biggest size that fits the canvas
+width). Run:  python dev/test_render.py
 """
 import os
 import sys
 import tempfile
 import time
+import tkinter as tk
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import n1mm_callbook as cb  # noqa: E402
+
+_ROOT = tk.Tk()
+_ROOT.withdraw()
+# Matches CallbookApp._build: Canvas(width=360) + highlightthickness 1 each side.
+FAKE_CANVAS_W = 362
 
 
 class FakeCanvas:
@@ -35,11 +43,18 @@ class FakeCanvas:
     def coords(self, *a):
         pass
 
+    def winfo_width(self):
+        return FAKE_CANVAS_W
+
+    def winfo_reqwidth(self):
+        return FAKE_CANVAS_W
+
 
 def make(cls):
     app = cls.__new__(cls)
     app.canvas = FakeCanvas()
     app.main_id = 0
+    app._font_cache = {}
     return app
 
 
@@ -96,6 +111,8 @@ def main():
     ok &= check("HF US, 2 slots pending", r(hf, [US, None, None], {1, 2}), "Fred - MA/5 … …")
     ok &= check("HF DX, foreign state dropped, zones agree -> collapse",
                 r(hf, [DL, DX, DX]), "Hans (Germany) - 14")
+    ok &= check("HF DX collapsed 'name (Country) - zone' -> big font too",
+                rsize(hf, [DL, DX, DX]), cb.FONT_SIZE_BIG)
     ok &= check("HF DX, no zone anywhere", r(hf, [DXnz, DXnz, DXnz]), "Hans (Germany)")
     ok &= check("HF empty slot shows '·' (partial, no collapse)",
                 r(hf, [US, EMPTY, USnz]), "Fred - MA/5 · MA")

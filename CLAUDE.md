@@ -88,10 +88,14 @@ by `SLOT_SEP`; an empty slot is `SLOT_EMPTY` (`·`), a pending one
 `SLOT_PENDING` (`…`). When `all_done` and every real value matches (>=2 of
 them) the text fill is `TEXT_AGREE` (light green) instead of `TEXT_DEFAULT`
 (`agree`). When `agree` **and** `COLLAPSE_ON_AGREE` (on for every app),
-that one value is shown once instead of `SLOT_SEP`-joined. The font is
-`FONT_SIZE_BIG` for **any** result line `<= FONT_BIG_MAXLEN` chars (the
-collapsed token, but also a short disagreement / partial answer), else
-the length-based `_font_for`.
+that one value is shown once instead of `SLOT_SEP`-joined. `_font_for`
+then walks `FONT_LADDER` (26 … 12) and returns the first size whose
+`tkfont.Font.measure(text)` fits the canvas width – live width once the
+window is mapped, `winfo_reqwidth` before that – so a short line, the
+collapsed token or a `name (Country) - zone` DX line lands on
+`FONT_SIZE_BIG` and only a long row steps down. `Font` objects are cached
+per size in `self._font_cache`. The canvas is `width=360` (was 330) to
+give the big font room.
 
 ### Class attributes `VHFcallbookApp` overrides (base = HF behaviour)
 

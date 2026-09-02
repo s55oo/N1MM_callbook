@@ -171,10 +171,10 @@ python VHFcallbook.py   [--port 12060] [--config VHFcallbook.cfg]
   shows as **`FRED - MA/5`** – a quick "you can trust this" signal. A
   disagreement (`FRED - MA/5 MA/4 MA/5`), or a source that returned only
   part (`MA` vs `MA/5`), keeps every slot visible.
-- **The font is as large as the line allows.** Any result that fits –
-  the collapsed token, but also a short two-source disagreement or partial
-  answer – is drawn in a **big font**; longer lines shrink automatically
-  to fit the window.
+- **The font is as large as the line allows.** The result is drawn at the
+  biggest size that actually fits the window – the collapsed token, a
+  `name (Country) - zone` DX line, and a short two-source disagreement all
+  get the **big font**; a long side-by-side row steps down until it fits.
 - For a **US station** the main area shows the **shortest operator name**
   (printed once) followed by the **`state/zone`** token – one per source
   when they differ, a single one when they agree. A slot shows just the
@@ -343,14 +343,15 @@ dev\bench_latency.py – lookup-latency benchmark
 > feature they describe lives in `VHFcallbook` today.
 
 - **v2.19 – HF 2.17 / VHF 1.2** – **agreed `state/zone` collapses, and a
-  bigger font.** The HF window now does what the VHF one already did: when
-  every source returns the **same state and CQ zone**, the repeated
-  `state/zone` token merges into one (`Fred - MA/5 MA/5 MA/5` →
-  `Fred - MA/5`), still green (shared `COLLAPSE_ON_AGREE` engine flag – now
-  on for both apps). And the **large font is no longer collapse-only** –
-  any result line that fits the window (the collapsed token, but also a
-  short two-source disagreement or partial answer) is drawn big; longer
-  lines shrink to fit as before.
+  bigger, width-aware font.** The HF window now does what the VHF one
+  already did: when every source returns the **same state and CQ zone**,
+  the repeated `state/zone` token merges into one (`Fred - MA/5 MA/5 MA/5`
+  → `Fred - MA/5`), still green (shared `COLLAPSE_ON_AGREE` engine flag –
+  now on for both apps). The result line is now drawn at the **largest
+  font that actually fits** (measured, not guessed): the collapsed token,
+  a `name (Country) - zone` DX line and a short disagreement all get the
+  big font; long side-by-side rows step down to fit. The window is a touch
+  wider to give the big font room.
 - **v2.18 / `VHFcallbook` 1.1** – `n1mm_VHFcallbook` and
   `VHFctest4WinCallbook` **deleted** (source, EXEs, config templates, spec
   files). `VHFcallbook` already did everything both did – a single window

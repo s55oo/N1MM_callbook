@@ -44,6 +44,7 @@ import sys
 import threading
 import time
 import tkinter as tk
+import tkinter.font as tkfont
 import urllib.parse
 import xml.etree.ElementTree as ET
 
@@ -68,13 +69,13 @@ SLOT_PENDING = "…"  # a source is still being queried ("…")
 
 FONT_SIZE_NAME = 18
 FONT_SIZE_FOOTER = 10
-FONT_SIZES = [(14, 18), (24, 15), (34, 13), (9999, 11)]
-# Any result line that fits in FONT_BIG_MAXLEN characters is drawn at this
-# size (~two steps larger than the normal 18 pt) - the collapsed single
-# token when every source agrees, but also a short disagreement or partial
-# answer. Longer lines fall back to the length-based FONT_SIZES ladder.
 FONT_SIZE_BIG = 26
-FONT_BIG_MAXLEN = 16
+# The main result line is drawn at the largest of these sizes whose
+# rendered width actually fits the canvas (measured, not guessed from the
+# character count) - so a collapsed single token, a short disagreement,
+# and a short "name (Country) - zone" DX line all get FONT_SIZE_BIG, while
+# a long side-by-side row steps down until it fits.
+FONT_LADDER = (FONT_SIZE_BIG, 23, 20, 18, 16, 14, 12)
 
 # Start-up self-test. On launch every configured source is queried once
 # for PRECHECK_CALL and the window lists, source by source, whether it
@@ -998,6 +999,7 @@ class CallbookApp:
         self._precheck_active = False
         self._slots = None
         self._pending_inds = set()
+        self._font_cache = {}  # size -> tkfont.Font, for width measurement
         self.local = set(local_interfaces())
         self.local.add("127.0.0.1")
         self._build()
@@ -1044,7 +1046,7 @@ class CallbookApp:
 
         self.canvas = tk.Canvas(
             frame,
-            width=330,
+            width=360,
             height=64,
             bg=COLOR_IDLE,
             highlightthickness=1,
@@ -1052,7 +1054,7 @@ class CallbookApp:
         )
         self.canvas.pack(fill=tk.X)
         self.main_id = self.canvas.create_text(
-            165, 32, text="—", font=("Segoe UI", FONT_SIZE_NAME, "bold"), fill="white"
+            180, 32, text="—", font=("Segoe UI", FONT_SIZE_NAME, "bold"), fill="white"
         )
         self.canvas.bind("<Configure>", self._recenter_text)
 
@@ -1380,12 +1382,14 @@ class CallbookApp:
         # "…" and one that answered with nothing shows "·", so results
         # appear as they arrive. When every source that answered agrees the
         # text turns light green and (COLLAPSE_ON_AGREE) the repeated value
-        # collapses to one token. Any line short enough (FONT_BIG_MAXLEN)
-        # gets the large font, collapsed or not. Example final lines:
+        # collapses to one token. _font_for then picks the biggest size
+        # that fits the canvas, so anything short - a collapsed token, a
+        # DX "name (Country) - zone", a two-source disagreement - is drawn
+        # large and only a long side-by-side row steps down. Examples:
         #   HF, all agree:       "Dave - MA/5"            (collapsed, big, green)
-        #   HF, 2 sources differ:"Dave - MA/5 MA/4"       (big - still fits)
-        #   HF, 3 sources differ:"Dave - MA/5 MA/4 MA/5"  (too long -> ladder)
-        #   HF, DX all agree:    "Hans (Germany) - 14"    (too long -> ladder)
+        #   HF, DX all agree:    "Hans (Germany) - 14"    (big)
+        #   HF, 2 sources differ:"Dave - MA/5 MA/4"       (big)
+        #   HF, 3 sources differ:"Dave - MA/5 MA/4 MA/5"  (steps down to fit)
         #   VHF, all agree:      "Hans - JN76HD"          (collapsed, big, green)
         #   VHF, sources differ: "Hans - JN76GB - JN76HD - JN76HD"  (-> ladder)
         finished = [slots[i] for i in range(len(slots)) if i not in pending]
@@ -1408,7 +1412,9 @@ class CallbookApp:
         # "MA/5 MA/5 MA/5" / "JN76HD - JN76HD - JN76HD".
         collapsed = agree and self.COLLAPSE_ON_AGREE
         fill = TEXT_DEFAULT
-        big = False
+        # Placeholder / error states keep a plain fixed size; only a real
+        # result line is sized to fit (see _font_for).
+        font = ("Segoe UI", FONT_SIZE_NAME, "bold")
         if not finished:
             text = SLOT_PENDING
             bg = COLOR_ACTIVE
@@ -1432,10 +1438,7 @@ class CallbookApp:
             bg = COLOR_ACTIVE
             if agree:
                 fill = TEXT_AGREE
-            # Use the large font for any result line short enough to fit -
-            # the collapsed single token, but also a short disagreement or
-            # partial answer. Longer lines fall back to length-based sizing.
-            big = len(text) <= FONT_BIG_MAXLEN
+            font = self._font_for(text)
         elif not all_done:
             text = SLOT_PENDING
             bg = COLOR_ACTIVE
@@ -1444,14 +1447,22 @@ class CallbookApp:
             bg = COLOR_IDLE
         self.canvas.configure(bg=bg)
         self.canvas.itemconfigure(self.main_id, text=text, fill=fill)
-        font = ("Segoe UI", FONT_SIZE_BIG, "bold") if big else self._font_for(len(text))
         self.canvas.itemconfigure(self.main_id, font=font)
 
-    def _font_for(self, length):
-        for limit, size in FONT_SIZES:
-            if length <= limit:
+    def _font_for(self, text):
+        # Largest FONT_LADDER size whose rendered width fits the canvas.
+        # Uses the live width once the window is up, the requested width
+        # before that; a short line (or the collapsed single token) lands
+        # on FONT_SIZE_BIG, a long side-by-side row steps down to fit.
+        avail = max(self.canvas.winfo_width(), self.canvas.winfo_reqwidth()) - 12
+        for size in FONT_LADDER:
+            font = self._font_cache.get(size)
+            if font is None:
+                font = tkfont.Font(family="Segoe UI", size=size, weight="bold")
+                self._font_cache[size] = font
+            if font.measure(text) <= avail:
                 return ("Segoe UI", size, "bold")
-        return ("Segoe UI", 11, "bold")
+        return ("Segoe UI", FONT_LADDER[-1], "bold")
 
     def on_close(self):
         self._save_window()

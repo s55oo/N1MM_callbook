@@ -143,11 +143,13 @@ defaults when it is absent. Copy `Callbooker.cfg.template` and edit:
 udp_port=12060
 cache_days=30
 cache_file=Callbooker_cache.json
-cache_persist=yes                 # no = in-memory only, never writes to disk
+# no = in-memory only, never writes to disk
+cache_persist=yes
 
 # Start-up self-test (query every source once on launch, show OK / time):
 # selftest=yes
-# selftest_call=S55OO             # call to probe; blank / selftest=no disables
+# Callsign to probe; blank / selftest=no disables it.
+# selftest_call=S55OO
 
 # QRZ.com login - the QRZ column uses the paid XML API when this is set
 # and the subscription is live, otherwise the public page (locator only):
@@ -173,6 +175,71 @@ frequency and remembers the last one between runs.
   placeholder password) is in the repo.
 - The `.exe` does **not** embed the `.cfg`; it reads it from disk at run
   time, so shipping the EXE never leaks your password.
+
+### MQTT output (optional)
+
+Callbooker can publish one JSON document after each completed lookup,
+including cache hits. MQTT runs on its own network thread, reconnects in the
+background, and never blocks the lookup window when the broker is unavailable.
+It is off by default. Add this to `Callbooker.cfg` to enable it:
+
+```ini
+mqtt_enabled=yes
+mqtt_server=192.168.1.10
+mqtt_tls=yes
+mqtt_port=8883
+mqtt_topic=callbooker/results
+# mqtt_qos may be 0, 1, or 2
+mqtt_qos=1
+mqtt_retain=no
+# Blank client ID = random callbooker-XXXXXXXX each run
+# mqtt_client_id=
+# mqtt_username=
+# mqtt_password=
+# mqtt_password_env=CALLBOOKER_MQTT_PASSWORD
+```
+
+TLS is supported with `mqtt_tls=yes`; its default port is 8883 when
+`mqtt_port` is omitted. `mqtt_ca_certs` may point to a custom CA file (relative
+paths are resolved next to the config file), while a blank value uses the
+operating-system CA store. `mqtt_tls_insecure=yes` disables certificate host
+verification and should only be used temporarily for diagnosis.
+For a plaintext broker on a trusted local network, use `mqtt_tls=no` and
+`mqtt_port=1883`; broker credentials and lookup data are then unencrypted.
+
+The optional connection controls are `mqtt_keepalive` (default 60 seconds),
+`mqtt_queue_max` (100), `mqtt_reconnect_min` (1 second), and
+`mqtt_reconnect_max` (30 seconds). Passwords are stored in the ignored local
+config file, just like QRZ credentials. Prefer `mqtt_password_env` to name an
+environment variable containing the password instead. Username/password
+authentication without TLS sends those credentials without transport
+encryption, so use `mqtt_tls=yes` outside a trusted local network. The fixed
+publish topic must not contain `+` or `#`. When `mqtt_client_id` is blank or omitted, every launch
+uses a random `callbooker-XXXXXXXX` client ID to avoid collisions between
+stations; set it explicitly only when the broker requires a stable identity.
+
+Each payload has schema version 1. It contains `callsign`, `mode`, `feed`,
+`frequency_mhz`, `cached`, a normalized `summary`, and the ordered `sources`
+array. Each source entry includes its source name, display value, and result
+fields (`name`, `grid`, `state`, `cqzone`, `country`). A failed source has a
+null result. For N1MM, the frequency is taken from the packet or latest
+RadioInfo; it is null for VHFCtest4WIN.
+
+```json
+{
+  "schema_version": 1,
+  "published_at": "2026-09-02T18:30:00Z",
+  "callsign": "S55OO",
+  "mode": "vhf",
+  "feed": "vhfctest4win",
+  "frequency_mhz": null,
+  "cached": false,
+  "summary": {"name": "Goran", "values": ["JN76HD"], "agreement": false, "selected_value": null},
+  "sources": [
+    {"source": "QRZCQ", "value": "JN76HD", "result": {"name": "Goran", "grid": "JN76HD", "state": "", "cqzone": "15", "country": "Slovenia"}}
+  ]
+}
+```
 
 ---
 
@@ -239,10 +306,10 @@ frequency and remembers the last one between runs.
 
 ## 5. Building the standalone EXE (for PCs without Python)
 
-Requires Python + PyInstaller:
+Requires Python, Paho MQTT, and PyInstaller:
 
 ```bat
-python -m pip install pyinstaller
+python -m pip install -r requirements.txt pyinstaller
 python -m PyInstaller --onefile --windowed --name Callbooker --manifest manifest.xml Callbooker.py
 copy /Y dist\Callbooker.exe Callbooker.exe
 ```
@@ -266,10 +333,13 @@ manifest.xml            – PyInstaller manifest (common controls)
 Callbooker_cache.json   – local lookup cache          (auto-created, gitignored)
 Callbooker_window.json  – last window position + view (auto-created, gitignored)
 qrz_session.json        – cached QRZ XML session key   (auto-created, gitignored)
+mqtt_client.py          – optional reconnecting MQTT publisher
+requirements.txt        – Python runtime dependency (Paho MQTT)
 LICENSE                 – The Unlicense (public domain)
 CLAUDE.md               – developer notes (architecture, gotchas, release steps)
 docs/callbooker-*.png   – screenshots used in this README
 dev/test_render.py      – headless display-logic tests (no network)
+dev/test_mqtt.py        – MQTT config/payload tests (no broker required)
 dev/bench_latency.py    – lookup-latency benchmark
 dev/*.py, dev/*.md      – VHFCtest4WIN reverse-engineering notes and sniff tools
 ```
@@ -281,6 +351,11 @@ dev/*.py, dev/*.md      – VHFCtest4WIN reverse-engineering notes and sniff too
 Callbooker replaces the earlier separate apps (`n1mm_callbook` for HF,
 `VHFcallbook` for VHF, and before that `n1mm_VHFcallbook` /
 `VHFctest4WinCallbook`). All of their features are in `Callbooker` 1.1.
+
+- **Unreleased** – optional non-blocking MQTT JSON output with configurable
+  broker, topic, QoS, retain flag, authentication, TLS, reconnect timing, and
+  bounded offline queue. Publishes completed live and cached lookups while
+  preserving each source's result.
 
 - **1.1** – single-app release. One window, two feeds (N1MM 12060 +
   VHFCtest4WIN 6767), HF/VHF view chosen per callsign from the operating

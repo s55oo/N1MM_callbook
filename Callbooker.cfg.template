@@ -32,3 +32,32 @@ cache_file=Callbooker_cache.json
 # is active. Requires an active QRZ XML subscription.
 # qrz_username=S55OO
 # qrz_password=YOUR_QRZ_PASSWORD
+
+# Optional MQTT output. One JSON message is published after every completed
+# lookup, including cache hits. MQTT is disabled unless explicitly enabled.
+# Install paho-mqtt when running from source (`pip install -r requirements.txt`).
+# mqtt_enabled=yes
+# mqtt_server=192.168.1.10
+# mqtt_tls=yes
+# mqtt_port=8883
+# mqtt_topic=callbooker/results
+# mqtt_qos=1
+# mqtt_retain=no
+# Blank client ID = random callbooker-XXXXXXXX each run.
+# mqtt_client_id=
+# mqtt_username=
+# mqtt_password=
+# Prefer an environment variable over a plaintext password.
+# mqtt_password_env=CALLBOOKER_MQTT_PASSWORD
+
+# TLS defaults to port 8883 when mqtt_port is omitted. Leave ca_certs blank
+# to use the operating system CA store. Never enable tls_insecure in normal use.
+# mqtt_ca_certs=broker-ca.pem
+# mqtt_tls_insecure=no
+
+# Connection/offline queue tuning (defaults shown):
+# mqtt_keepalive=60
+# mqtt_queue_max=100
+# Maximum allowed queue size: 1000.
+# mqtt_reconnect_min=1
+# mqtt_reconnect_max=30

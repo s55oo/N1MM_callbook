@@ -133,6 +133,8 @@ class CallbookerApp(cb.CallbookApp):
         # Set before super().__init__ so _build / _apply_mode can read them.
         self._vhf_mode = False
         self._last_mhz = None
+        self._result_feed = None
+        self._result_frequency_mhz = None
         super().__init__(root, *args, **kwargs)
         # Grab the QRZ XML partial that base __init__ may have prepended,
         # so _apply_mode can keep it at slot 0 in either view.
@@ -188,6 +190,8 @@ class CallbookerApp(cb.CallbookApp):
             ref = mhz or self._last_mhz
             if ref is not None:
                 self._apply_mode(ref >= VHF_ABOVE_MHZ)
+            self._result_feed = "n1mm"
+            self._result_frequency_mhz = ref
             self._handle_call(call)
 
     def _poll_inbox(self):
@@ -195,6 +199,8 @@ class CallbookerApp(cb.CallbookApp):
         # the base loop drains _v4w_inbox into _handle_call.
         if self._v4w_inbox:
             self._apply_mode(True)
+            self._result_feed = "vhfctest4win"
+            self._result_frequency_mhz = None
         super()._poll_inbox()
 
     # -- window / remembered view ----------------------------------------

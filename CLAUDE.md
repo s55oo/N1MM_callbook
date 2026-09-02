@@ -34,8 +34,9 @@ agree the row collapses to one larger green token.
   lookup orchestration), `run()` (entry point), the source functions,
   `_HttpPool`, `Cache`. Its class-attribute defaults are the **HF view**.
 
-Pure Python standard library — no third-party runtime dependencies.
-PyInstaller is only needed to build the EXE. Public domain (Unlicense).
+MQTT output uses the `paho-mqtt` dependency listed in `requirements.txt`;
+the lookup and UI code otherwise use the standard library. PyInstaller is
+only needed to build the EXE. Public domain (Unlicense).
 
 ## Architecture (all in `n1mm_callbook.py` unless noted)
 
@@ -47,7 +48,8 @@ PyInstaller is only needed to build the EXE. Public domain (Unlicense).
 | `v4w_listener_loop()` | the 6767 listener (Callbooker, on unless `vhfctest_share=no`). Tries a normal UDP bind; VHFCtest4WIN holds 6767 with `SO_EXCLUSIVEADDRUSE`, so if it is already running the bind fails and it falls back to `_v4w_raw_listen` — a Windows `SIO_RCVALL` raw socket that needs the app run as admin. Feeds callsigns to `_on_v4w_call` → `_v4w_inbox` → `_poll_inbox` (drained on the GUI thread) → `_handle_call` |
 | `normalize_call()` / `normalize_grid()` | sanitise the call; upper-case locators so a case-only difference isn't seen as a disagreement |
 | `_HttpPool` / `http_get()` | one kept-alive HTTPS connection per host, gzip, per-host lock, stale-connection retry, busy-host fallback to a one-shot connection. **All source fetches go through `http_get`.** |
-| `Cache` | JSON cache keyed by call. `put()` only marks dirty; `flush()` (driven from `_poll_inbox`, forced in `on_close`) writes at most once per `FLUSH_INTERVAL`. Stores only `_CACHE_FIELDS`. Prunes expired / wrong-`CACHE_SCHEMA` entries on load. `persist=False` (`cache_persist=no`) = in-memory only. |
+| `Cache` | JSON cache keyed by call + mode + source layout. `put()` only marks dirty; `flush()` (driven from `_poll_inbox`, forced in `on_close`) writes at most once per `FLUSH_INTERVAL`. Stores only `_CACHE_FIELDS`. Prunes expired / wrong-`CACHE_SCHEMA` entries on load. `persist=False` (`cache_persist=no`) = in-memory only. |
+| `mqtt_client.MqttPublisher` | Optional long-lived Paho MQTT 3.1.1 client. Uses a background network loop, bounded offline queue, automatic reconnect, optional auth/TLS, and publishes schema-v1 JSON only after lookup completion. |
 | `qrzcq_lookup` / `hamqth_lookup` / `qrz_lookup` | the sources. Each returns a dict with the same keys (`name qth grid class state cqzone country`) or `None`. **`qrz_lookup` is one source**: `_qrz_xml_lookup` (paid XML API, needs creds + a live subscription) when it can, else `_qrz_web_lookup` (grid from `cs_lat`/`cs_lon` on the public `/db/` page, no login) — never both. It sets module `_QRZ_TIER` (`"xml"`/`"web"`) and `_QRZ_SUBEXP`, read by the self-test. |
 | `qrz_session_load()` / `_qrz_session_save()` | persist the QRZ XML session key to `qrz_session.json` so a restart skips the ~0.6 s re-login |
 | `load_config()` / `run()` | entry point — parse args + the `key=value` .cfg, build `CallbookerApp`, run the Tk loop. `run(..., always_vhfctest=<bool>)` — Callbooker computes it from `vhfctest_share` (default yes) and forces the 6767 listener on when true |
@@ -55,12 +57,12 @@ PyInstaller is only needed to build the EXE. Public domain (Unlicense).
 
 ### Lookup flow
 
-`on_packet` → debounce 300 ms → `_on_stable` → cache hit renders
+`on_packet` → debounce 300 ms → `_on_stable` → cache hit renders and publishes
 immediately, else `_start_lookup` → `_do_lookup` spawns **one thread per
-source** → each posts `(call, slot_index, result_or_None)` to `self._inbox`
+source** → each posts `(call, generation, slot_index, result_or_None)` to `self._inbox`
 → `_poll_inbox` (GUI thread, every 100 ms) drains it, drops results whose
-call != `self.current`, renders each slot as it lands, caches once every
-slot is in.
+call != `self.current`, renders each slot as it lands, then caches and publishes
+once every slot is in.
 
 ### Start-up self-test
 
@@ -182,4 +184,5 @@ docs / `dev/` / comment change is committed and pushed only.
   `dev/probe_window.py`, `dev/vhfctest4win-captures/` — the VHFCtest4WIN
   6767 reverse-engineering (protocol notes, sniff tools, packet captures).
 
-Run: `python dev/test_render.py` / `python dev/bench_latency.py`.
+Run: `python dev/test_render.py` / `python dev/test_mqtt.py` /
+`python dev/bench_latency.py`.

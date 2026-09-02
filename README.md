@@ -68,13 +68,22 @@ fallback for the HF/VHF decision.
 
 ### DXLog.net
 
-DXLog.net can send the **same `LookupInfo` / `ContactInfo` XML on 12060**,
-so Callbooker needs no extra setup once it is switched on. In the **Config**
-menu enable **Broadcast QSO data** and **…in N1MM format** (older builds:
-*Options → Configuration → Broadcast*); leave the target at
-`127.0.0.1:12060`. DXLog emits the `LookupInfo` packet on **Space/Tab** off
-the callsign field – before the QSO is logged – just like N1MM, so the
-pre-log check works the same way.
+DXLog.net can send the same `LookupInfo` / `ContactInfo` XML on 12060, so
+Callbooker needs no extra setup once it is switched on. Under
+**Options → Broadcast** tick:
+
+- **Use N1MM QSO format** – the packet layout Callbooker parses.
+- **Callsign on space or tab** – sends a `LookupInfo` packet when you
+  press Space/Tab off the callsign field, *before* the QSO is logged.
+  This is the pre-log trigger, same role as N1MM's *External Callsign
+  Lookup*.
+- **QSOs** – optional; adds a `ContactInfo` packet when a QSO is logged.
+
+![DXLog.net – Options → Broadcast](docs/dxlog-broadcast-setup.png)
+
+The broadcast target defaults to `127.0.0.1:12060`
+(`Network_QSOsBroadcastPort` in DXLog's config) – leave it as is when
+Callbooker runs on the same PC. Verified against DXLog.net v2.6.34.
 
 ### Which view — HF or VHF?
 
@@ -278,7 +287,7 @@ Callbooker_window.json  – last window position + view (auto-created, gitignore
 qrz_session.json        – cached QRZ XML session key   (auto-created, gitignored)
 LICENSE                 – The Unlicense (public domain)
 CLAUDE.md               – developer notes (architecture, gotchas, release steps)
-docs/callbooker-*.png   – screenshots used in this README
+docs/*.png              – screenshots used in this README
 dev/test_render.py      – headless display-logic tests (no network)
 dev/bench_latency.py    – lookup-latency benchmark
 dev/*.py, dev/*.md      – VHFCtest4WIN reverse-engineering notes and sniff tools

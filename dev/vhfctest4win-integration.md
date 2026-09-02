@@ -59,9 +59,10 @@ broadcasting.
    reads the broadcast below the socket layer. Confirmed to capture the
    locally-originated subnet broadcast. **Needs the process elevated**
    (an admin *token*, not just an admin user account).
-3. `VHFctest4WinCallbook.main()` bridges 1→2: if 6767 is held and the
-   process is not admin, it relaunches itself elevated via
-   `ShellExecuteW "runas"` (one UAC prompt; `--elevated` stops the loop).
+3. `VHFcallbook.main()` bridges 1→2: if the 6767 feed is wanted, 6767 is
+   held and the process is not admin, it relaunches itself elevated via
+   `ShellExecuteW "runas"` (one UAC prompt; `--elevated` stops the loop;
+   all argv forwarded).
 4. If the UAC prompt is declined, it runs unelevated and `on_status` puts
    a one-line hint in the footer.
 
@@ -86,8 +87,9 @@ licence). So elevation is the path.
   `SIO_RCVALL` was confirmed to also capture loopback (`127.x`) traffic
   on this Win11 box, so it works whether `BroadcastIP` is the subnet or
   `127.0.0.1`.
-- `VHFCTEST_CAPABLE` (True on `VHFApp`) + `run(always_vhfctest=...)`.
-- `VHFctest4WinCallbook.py` — `VHFApp` subclass, feed always on.
+- `VHFCTEST_CAPABLE` (True on `VHFcallbookApp`) + `run(always_vhfctest=...)`.
+- `VHFcallbook.py` — `VHFcallbookApp(CallbookApp)` + the UAC self-relaunch;
+  `main()` computes `always_vhfctest` from `vhfctest_share` (default yes).
 
 ## Dev tools (`dev/`)
 

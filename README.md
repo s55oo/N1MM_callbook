@@ -323,24 +323,31 @@ dev\bench_latency.py – lookup-latency benchmark
 
 ## 7. Changelog
 
-- **VHFcallbook 1.1** – the legacy VHF apps `n1mm_VHFcallbook` and
-  `VHFctest4WinCallbook` are **removed**. `VHFcallbook` (introduced in
-  1.0) does everything both did: one window listening on **both** the N1MM
-  Logger+ port (**12060**) and the VHFCtest4WIN sharing port (**6767**),
-  whichever logger you use. `VHFApp` was folded straight into
-  `VHFcallbook.py`, so it no longer depends on the deleted module – no
-  behaviour change. Existing `n1mm_VHFcallbook.cfg` /
-  `VHFctest4WinCallbook.cfg` users: copy your settings into
-  `VHFcallbook.cfg`. HF app unchanged.
-- **VHFcallbook 1.0** – the two VHF apps merged into **one window**.
-  `VHFcallbook` listens on **both** the N1MM Logger+ port (**12060**) and
-  the VHFCtest4WIN sharing port (**6767**) at the same time, so whichever
-  logger sends the callsign first drives the same side-by-side locator
-  lookup. The 6767 feed is **on by default** (one UAC prompt if
-  VHFCtest4WIN already holds the port, exactly as before;
-  `vhfctest_share=no` in `VHFcallbook.cfg` turns it off). New
-  `VHFcallbook.cfg` / `VHFcallbook_cache.json`. No engine change; HF app
-  unchanged.
+> **VHF app history.** Through **v2.16** the VHF side was two apps –
+> `n1mm_VHFcallbook` (N1MM feed) and `VHFctest4WinCallbook` (VHFCtest4WIN
+> 6767 feed). **v2.17** added `VHFcallbook`, which does both at once.
+> **v2.18** (`VHFcallbook` 1.1) **removed `n1mm_VHFcallbook` and
+> `VHFctest4WinCallbook` entirely** – `VHFcallbook` is the only VHF app
+> now. Older entries below that name the retired apps are historical; the
+> feature they describe lives in `VHFcallbook` today.
+
+- **v2.18 / `VHFcallbook` 1.1** – `n1mm_VHFcallbook` and
+  `VHFctest4WinCallbook` **deleted** (source, EXEs, config templates, spec
+  files). `VHFcallbook` already did everything both did – a single window
+  on **both** UDP **12060** (N1MM Logger+) and **6767** (VHFCtest4WIN),
+  6767 on by default. Its `VHFApp` base class was folded straight into
+  `VHFcallbook.py` so nothing imports the removed module; no behaviour
+  change. **Migrating:** copy the values from your old
+  `n1mm_VHFcallbook.cfg` / `VHFctest4WinCallbook.cfg` into
+  `VHFcallbook.cfg`, then the old `.cfg` and `*_cache.json` files can be
+  deleted. HF app (`n1mm_callbook` 2.16) unchanged.
+- **v2.17 / `VHFcallbook` 1.0** – new `VHFcallbook` app: the two VHF apps'
+  jobs in **one window** that listens on **both** 12060 and 6767 at the
+  same time, so whichever logger sends the callsign first drives the same
+  side-by-side locator lookup. 6767 feed **on by default** (one UAC prompt
+  if VHFCtest4WIN already holds the port; `vhfctest_share=no` turns it
+  off). `n1mm_VHFcallbook` / `VHFctest4WinCallbook` were still shipped
+  alongside it in this release (removed in v2.18). No engine change.
 - **2.16 (HF) / 1.20 (VHF) / 1.2 (VHFctest4WIN)** – **VHF: operator name +
   agreed-locator collapse**. The VHF windows (`n1mm_VHFcallbook` and
   `VHFctest4WinCallbook`) now print the **operator name** in front of the

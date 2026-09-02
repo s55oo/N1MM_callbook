@@ -849,9 +849,10 @@ def run(app_class, config_name, cache_name, description, always_vhfctest=False):
     """Shared entry point for the apps: parse the CLI args and config file,
     build ``app_class`` (CallbookApp or a subclass) and run the Tk loop.
     Only the file names and the ArgumentParser description differ between
-    the HF and VHF variants. ``always_vhfctest=True`` (the dedicated
-    VHFctest4WinCallbook app) turns the VHFCtest4WIN 6767 feed on
-    unconditionally instead of gating it on ``vhfctest_share``.
+    the HF and VHF apps. ``always_vhfctest=True`` turns the VHFCtest4WIN
+    6767 feed on regardless of ``vhfctest_share``; ``VHFcallbook`` passes a
+    value computed from its own config there (feed on unless
+    ``vhfctest_share=no``), which is why the feed defaults differ per app.
     """
     parser = argparse.ArgumentParser(description=description)
     parser.add_argument("--port", type=int, default=DEFAULT_PORT)
@@ -860,8 +861,8 @@ def run(app_class, config_name, cache_name, description, always_vhfctest=False):
         default=os.path.join(app_dir(), config_name),
         help="config file (same folder as the exe by default)",
     )
-    # Set by an elevated self-relaunch (VHFctest4WinCallbook); only used to
-    # stop that relaunch from looping. Hidden from --help.
+    # Set by VHFcallbook's elevated self-relaunch; only used to stop that
+    # relaunch from looping. Hidden from --help.
     parser.add_argument("--elevated", action="store_true", help=argparse.SUPPRESS)
     args = parser.parse_args()
 
@@ -884,9 +885,6 @@ def run(app_class, config_name, cache_name, description, always_vhfctest=False):
             os.path.join(os.path.dirname(args.config), settings["cache_file"])
         )
 
-    # VHFCtest4WIN pre-log callsign feed (VHFctest4WinCallbook, or the VHF
-    # variant with vhfctest_share=yes). The port matches VHFCtest4WIN's
-    # multi-op sharing port (6767).
     # Start-up self-test callsign. Empty string = disabled (selftest=no).
     selftest_call = settings.get("selftest_call", PRECHECK_CALL).strip().upper()
     if settings.get("selftest", "yes").strip().lower() in (
@@ -894,6 +892,10 @@ def run(app_class, config_name, cache_name, description, always_vhfctest=False):
     ):
         selftest_call = ""
 
+    # VHFCtest4WIN pre-log callsign feed on its multi-op sharing port
+    # (6767). always_vhfctest is set by VHFcallbook (to a value it computed
+    # from vhfctest_share, default yes); otherwise the feed is opt-in via
+    # vhfctest_share on any VHFCTEST_CAPABLE app.
     vhfctest_port = 0
     share = settings.get("vhfctest_share", "no").strip().lower() in (
         "yes", "true", "1", "on",

@@ -1,36 +1,38 @@
 # SPDX-License-Identifier: Unlicense
 """VHF/UHF locator lookup - N1MM Logger+ and VHFCtest4WIN in one window.
 
-Merges the two VHF apps - ``n1mm_VHFcallbook`` (fed by N1MM Logger+ on UDP
-**12060**) and ``VHFctest4WinCallbook`` (fed by VHFCtest4WIN's multi-op
-sharing broadcast on UDP **6767**) - into a single window. Both listeners
-run at the same time, so it does not matter which logger you use:
-whichever sends the worked callsign first drives the same side-by-side
-locator lookup (QRZCQ.com, HamQTH.com and the public QRZ.com page, plus
-the paid QRZ.com XML service when credentials are configured). Each
-source's locator is shown next to the others with the operator name in
-front; when every source that answered agrees the row collapses to a
-single locator in a larger green font ("Hans - JN76HD").
+Shows the QRA/maidenhead locator (e.g. JN76HD) of the worked station,
+with the operator name in front of it, from every configured source side
+by side - QRZCQ.com, HamQTH.com and the public QRZ.com page, plus the
+paid QRZ.com XML service when credentials are set. A wrong locator stands
+out against the others; when every source that answered agrees the row
+collapses to a single locator in a larger green font ("Hans - JN76HD").
 
-The VHFCtest4WIN feed (6767) is **on by default**. When VHFCtest4WIN is
-already running it holds 6767 exclusively, so the app relaunches itself
-elevated (one UAC prompt, click *Yes*) to read the broadcast with a
-Windows raw capture socket - exactly as ``VHFctest4WinCallbook`` did. If
-you decline it still opens and the window tells you what to do. Put
-``vhfctest_share=no`` in ``VHFcallbook.cfg`` to switch the 6767 feed (and
-the prompt) off and run as a plain N1MM-only VHF callbook.
+It listens on **both** the N1MM Logger+ broadcast (XML, UDP **12060**)
+and VHFCtest4WIN's multi-op sharing broadcast (UDP **6767**) at the same
+time, so it does not matter which logger you use: whichever sends the
+worked callsign first drives the same lookup. The VHFCtest4WIN feed also
+carries the callsign *as it is typed*, so the lookup runs before the QSO
+is logged and a wrong QRA locator can be caught while it is editable.
+
+The 6767 feed is **on by default**. When VHFCtest4WIN is already running
+it holds 6767 exclusively, so the app relaunches itself elevated (one UAC
+prompt, click *Yes*) to read the broadcast with a Windows raw capture
+socket. If you decline it still opens and the window tells you what to do.
+Put ``vhfctest_share=no`` in ``VHFcallbook.cfg`` to switch the 6767 feed
+(and the prompt) off and run as a plain N1MM-only VHF callbook.
 
 Lookups are cached in ``VHFcallbook_cache.json``.
 
 Made by S55OO with AI assistance.
 
-Version: 1.0
+Version: 1.1
 
 Usage:
     python VHFcallbook.py [--port 12060] [--config VHFcallbook.cfg]
 """
 
-__version__ = "1.0"
+__version__ = "1.1"
 
 import ctypes
 import os
@@ -39,7 +41,6 @@ import subprocess
 import sys
 
 import n1mm_callbook as cb
-import n1mm_VHFcallbook as vhf
 
 V4W_PORT = 6767
 CONFIG_NAME = "VHFcallbook.cfg"
@@ -109,9 +110,26 @@ def _wants_v4w_feed(argv):
     )
 
 
-class VHFcallbookApp(vhf.VHFApp):
+class VHFcallbookApp(cb.CallbookApp):
     VERSION = __version__
     APP_TITLE = "VHF Callbook"
+    # Takes VHFCtest4WIN's pre-log callsign feed (UDP 6767) in addition to
+    # the N1MM broadcast; run() wires the second listener.
+    VHFCTEST_CAPABLE = True
+    # Locator per source, shown side by side ("JN76GB - JN76HD - JN76HD")
+    # so a wrong one stands out, with the operator name (from the callbook)
+    # in front of it. When every source that answered agrees, the row
+    # collapses to one locator in a larger font and turns light green -
+    # "Hans - JN76HD" - a quick "grid confirmed" signal.
+    SLOT_FIELDS = ("grid",)
+    SLOT_SEP = " - "
+    SHOW_NAME = True
+    DX_COUNTRY = False        # locator-focused: no " (Country)" after the name
+    COLLAPSE_ON_AGREE = True
+    # Slot order: QRZCQ, HamQTH's "Grid:" row, then the locator computed
+    # from the coordinates on the public QRZ.com page. The paid QRZ XML
+    # service is prepended automatically when credentials are configured.
+    LOOKUP_CHAIN = (cb.qrzcq_lookup, cb.hamqth_lookup, cb.qrzdb_lookup)
 
     def _build(self):
         super()._build()

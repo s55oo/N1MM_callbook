@@ -52,10 +52,10 @@ def check(label, got, want):
 
 
 def main():
-    import n1mm_VHFcallbook as vhf
+    import VHFcallbook as vhf
 
     hf = make(cb.CallbookApp)
-    vh = make(vhf.VHFApp)
+    vh = make(vhf.VHFcallbookApp)
     ok = True
 
     US = {"name": "Fred", "state": "MA", "cqzone": "5", "country": "United States"}

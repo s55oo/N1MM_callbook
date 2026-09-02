@@ -1,6 +1,6 @@
 # N1MM Callbook – N1MM Logger+ Contest Callbook
 
-> **Version:** 2.16 (HF) / 1.20 (VHF) / 1.2 (VHFCtest4WIN) / 1.0 (VHFcallbook – merged VHF)
+> **Version:** 2.16 (HF – `n1mm_callbook`) / 1.1 (VHF – `VHFcallbook`)
 > · Made by **S55OO** with AI assistance. · **Public domain** – see [LICENSE](LICENSE).
 
 A compact always-on-top window that listens to the N1MM Logger+ external
@@ -24,15 +24,18 @@ the slots are shown left-to-right in that order (QRZ XML left-most when
 your QRZ login is configured). Without QRZ credentials it runs the two
 free sources.
 
-A **VHF variant** (`n1mm_VHFcallbook.py` / `n1mm_VHFcallbook.exe`) is also
-included. It uses the same engine but shows the worked station's
-**QRA/maidenhead locator** (e.g. `JN76HD`) in the main area, with the
-**operator name** in front of it, from the sources shown side by side –
-handy for VHF/UHF contests where the grid square is the exchange. When
-every source that answered returns the **same** locator the row collapses
-to a single value in a **larger green font** (`Goran - JN76HD`) – a quick
-"grid confirmed" signal; when they differ you see each one and can pick
-the right value. The **locator sources**:
+A **VHF variant** (`VHFcallbook.py` / `VHFcallbook.exe`) is also included.
+It uses the same engine but shows the worked station's **QRA/maidenhead
+locator** (e.g. `JN76HD`) in the main area, with the **operator name** in
+front of it, from the sources shown side by side – handy for VHF/UHF
+contests where the grid square is the exchange. When every source that
+answered returns the **same** locator the row collapses to a single value
+in a **larger green font** (`Goran - JN76HD`) – a quick "grid confirmed"
+signal; when they differ you see each one and can pick the right value.
+`VHFcallbook` also listens on **VHFCtest4WIN**'s sharing port (6767)
+alongside the N1MM port, so it works with either logger and can run the
+lookup *as the callsign is typed*, pre-log – see [section 1](#vhfcallbook--the-vhfctest4win-feed).
+The **locator sources**:
 
 | Source | How the locator is read |
 |---|---|
@@ -44,16 +47,6 @@ All locator sources are queried **in parallel** and each slot fills as
 soon as that source replies. With QRZ credentials configured the QRZ XML
 service is added as the left-most slot; without credentials the VHF app
 uses the three free locator sources.
-
-> **`VHFcallbook` (recommended for VHF)** merges `n1mm_VHFcallbook` and
-> `VHFctest4WinCallbook` into one window that listens on **both** the N1MM
-> Logger+ port (**12060**) **and** the VHFCtest4WIN sharing port
-> (**6767**) at the same time – whichever logger sends the callsign first
-> drives the identical locator lookup. Use it instead of picking one of
-> the two older VHF apps. See **section 1** (VHFCtest4WIN) for the 6767 /
-> UAC details – identical behaviour; `vhfctest_share=no` in
-> `VHFcallbook.cfg` turns the 6767 feed off. The older two apps are still
-> included for now but `VHFcallbook` replaces both.
 
 QRZCQ.com is a free public callbook that needs **no account and no API key** –
 each callsign has a page at `https://www.qrzcq.com/call/<CALL>` whose lookup
@@ -86,42 +79,35 @@ topmost Tkinter window with a colored canvas and a help icon.
 > the `LookupInfo`/`ContactInfo` packet automatically. `RadioInfo` only
 > carries the local operator's own call and is deliberately ignored.
 
-### VHFCtest4WIN – `VHFctest4WinCallbook`
+### `VHFcallbook` & the VHFCtest4WIN feed
 
 **VHFCtest4WIN** (S52AA's VHF contest logger) does not send N1MM
-`LookupInfo` packets, so with the plain VHF callbook it only reacts once a
-QSO is *logged*. **`VHFctest4WinCallbook`** is a dedicated variant that
-instead listens to VHFCtest4WIN's **multi-op sharing broadcast** (UDP
-**6767**), which carries the callsign **as it is typed** – so the locator
-lookup runs *before* the QSO is logged and a wrong QRA locator can be
-caught while it is still editable. Same locator sources shown side by side
-with the operator name, same collapse to one larger green locator when
-they all agree.
+`LookupInfo` packets. Instead it broadcasts the callsign in its entry
+field on its **multi-op sharing broadcast** (UDP **6767**) **as it is
+typed**. `VHFcallbook` listens on 6767 **in addition to** the N1MM port
+(12060), so with VHFCtest4WIN the locator lookup runs *before* the QSO is
+logged and a wrong QRA locator can be caught while it is still editable.
+The feed is **on by default**; set `vhfctest_share=no` in
+`VHFcallbook.cfg` to turn it (and the UAC prompt below) off.
 
 - Nothing to switch on in VHFCtest4WIN – it already broadcasts its entry
   field on 6767 as part of normal network sharing.
 - **Port 6767 / UAC.** VHFCtest4WIN keeps 6767 open with an exclusive
   lock, so the only way to read the broadcast while it runs is a raw
   capture socket, which needs elevation. When VHFCtest4WIN is already up,
-  `VHFctest4WinCallbook` **relaunches itself elevated** – you just get one
-  **UAC prompt, click Yes**. Decline it and the window still opens and
-  tells you what to do. No prompt when VHFCtest4WIN is not running yet.
-- Do **not** start `VHFctest4WinCallbook` before VHFCtest4WIN on the same
-  PC: it would take 6767 and VHFCtest4WIN's own network sharing then
-  breaks. Start VHFCtest4WIN first, then `VHFctest4WinCallbook`.
+  `VHFcallbook` **relaunches itself elevated** – you just get one **UAC
+  prompt, click Yes**. Decline it and the window still opens (N1MM feed
+  only) and tells you what to do. No prompt when VHFCtest4WIN is not
+  running yet, or when the 6767 feed is disabled.
+- Start VHFCtest4WIN **first**, then `VHFcallbook` – starting it the other
+  way round on the same PC would take 6767 and break VHFCtest4WIN's own
+  network sharing.
 - **Multi-op:** VHFCtest4WIN broadcasts to the whole network, so every
-  PC sees every operator's typing. `VHFctest4WinCallbook` ignores
-  everything except **its own PC's** VHFCtest4WIN, so each position's
-  window follows only that operator (same local-computer-only rule as the
-  N1MM feed).
+  PC sees every operator's typing. `VHFcallbook` ignores everything
+  except **its own PC's** VHFCtest4WIN, so each position's window follows
+  only that operator (same local-computer-only rule as the N1MM feed).
 - On another PC on the multi-op network, an ordinary listener works with
   no prompt.
-- The same feed is also available as **`vhfctest_share=yes`** in
-  `n1mm_VHFcallbook.cfg` if you would rather not run a second window
-  (subject to the same elevation rule).
-- **`VHFcallbook`** (the merged app) has this feed **on by default** and
-  also keeps listening on the N1MM port, so one window covers both
-  loggers. Everything in this section applies to it unchanged.
 
 ---
 
@@ -135,8 +121,8 @@ HF callbook:
    or:  run:  n1mm_callbook.exe           (standalone executable)
 ```
 
-VHF locator lookup – **merged app, listens on 12060 *and* 6767**
-(recommended; replaces the two below):
+VHF locator lookup – **listens on 12060 *and* 6767** (N1MM Logger+ and
+VHFCtest4WIN, whichever you use):
 
 ```
    or:  run:  pythonw VHFcallbook.py       (from source, no window)
@@ -145,21 +131,11 @@ VHF locator lookup – **merged app, listens on 12060 *and* 6767**
                                             running – see section 1)
 ```
 
-Legacy VHF apps (still included; `VHFcallbook` does both):
-
-```
-   or:  run:  n1mm_VHFcallbook.exe         (N1MM feed only unless
-                                            vhfctest_share=yes)
-   or:  run:  VHFctest4WinCallbook.exe     (VHFCtest4WIN feed only)
-```
-
 Arguments:
 
 ```
 python n1mm_callbook.py [--port 12060] [--config callbook.cfg]
-python VHFcallbook.py [--port 12060] [--config VHFcallbook.cfg]
-python n1mm_VHFcallbook.py [--port 12060] [--config n1mm_VHFcallbook.cfg]
-python VHFctest4WinCallbook.py [--config VHFctest4WinCallbook.cfg]
+python VHFcallbook.py   [--port 12060] [--config VHFcallbook.cfg]
 ```
 
 - `--port` – UDP port (default 12060).
@@ -210,7 +186,7 @@ python VHFctest4WinCallbook.py [--config VHFctest4WinCallbook.cfg]
   PC (identified by its local interface IPs). Broadcasts from other
   stations on the network are ignored, so only the local operator's
   callsign triggers a lookup.
-- Lookups are cached (`callbook_cache.json` / `n1mm_VHFcallbook_cache.json`)
+- Lookups are cached (`callbook_cache.json` / `VHFcallbook_cache.json`)
   so a re-worked call resolves instantly and the servers aren't hit twice.
   The file is written **at most once a minute** (and once on close), not on
   every lookup, and it stores only the fields the window shows. Expired
@@ -255,10 +231,9 @@ python VHFctest4WinCallbook.py [--config VHFctest4WinCallbook.cfg]
 
 ## 4. Configuration
 
-`callbook.cfg` (HF) / `VHFcallbook.cfg` (merged VHF app) – and, for the
-legacy apps, `n1mm_VHFcallbook.cfg` / `VHFctest4WinCallbook.cfg`. All are
-optional; the apps run with defaults when no `.cfg` exists. Each has a
-`*.cfg.template` in the repo to copy.
+`callbook.cfg` (HF) / `VHFcallbook.cfg` (VHF). Both are optional; the apps
+run with defaults when no `.cfg` exists. Each has a `*.cfg.template` in
+the repo to copy.
 
 ```
 [settings]
@@ -275,10 +250,9 @@ cache_persist=yes                        (no = in-memory only, never writes)
 # qrz_username=S55OO
 # qrz_password=YOUR_QRZ_PASSWORD
 
-# VHFCtest4WIN pre-log callsign feed, UDP 6767 (see section 1):
-#   VHFcallbook       - ON by default; vhfctest_share=no to disable
-#   n1mm_VHFcallbook  - OFF by default; vhfctest_share=yes to enable
-# vhfctest_share=yes
+# VHF only - VHFCtest4WIN pre-log callsign feed, UDP 6767 (see section 1).
+# On by default; set no to also stop the UAC prompt.
+# vhfctest_share=no
 # vhfctest_port=6767
 ```
 
@@ -307,17 +281,9 @@ REM HF callbook:
 python -m PyInstaller --onefile --windowed --name n1mm_callbook --manifest manifest.xml n1mm_callbook.py
 copy /Y dist\n1mm_callbook.exe n1mm_callbook.exe
 
-REM VHF locator lookup (merged app - N1MM + VHFCtest4WIN):
+REM VHF locator lookup (N1MM 12060 + VHFCtest4WIN 6767):
 python -m PyInstaller --onefile --windowed --name VHFcallbook --manifest manifest.xml VHFcallbook.py
 copy /Y dist\VHFcallbook.exe VHFcallbook.exe
-
-REM Legacy VHF locator variant:
-python -m PyInstaller --onefile --windowed --name n1mm_VHFcallbook --manifest manifest.xml n1mm_VHFcallbook.py
-copy /Y dist\n1mm_VHFcallbook.exe n1mm_VHFcallbook.exe
-
-REM Legacy VHFCtest4WIN pre-log locator check:
-python -m PyInstaller --onefile --windowed --name VHFctest4WinCallbook --manifest manifest.xml VHFctest4WinCallbook.py
-copy /Y dist\VHFctest4WinCallbook.exe VHFctest4WinCallbook.exe
 ```
 
 `manifest.xml` makes the windows use modern common controls. The results are
@@ -329,20 +295,13 @@ computers together with the (optional) matching `.cfg`.
 ## 6. Files
 
 ```
-n1mm_callbook.py     – main application, HF callbook (source code)
+n1mm_callbook.py     – HF callbook application (source code)
 n1mm_callbook.exe    – HF standalone executable (built, no Python needed)
-VHFcallbook.py       – merged VHF locator app: N1MM (12060) + VHFCtest4WIN (6767)
-VHFcallbook.exe      – merged VHF app, standalone executable
-VHFcallbook.cfg.template – merged VHF app config template (copy to VHFcallbook.cfg)
-VHFcallbook.cfg      – merged VHF app config (gitignored; may hold QRZ login)
-n1mm_VHFcallbook.py  – legacy VHF locator variant (N1MM feed); source code
-n1mm_VHFcallbook.exe – legacy VHF standalone executable
-VHFctest4WinCallbook.py  – legacy VHFCtest4WIN pre-log locator check (source code)
-VHFctest4WinCallbook.exe – legacy VHFCtest4WIN variant, standalone executable
+VHFcallbook.py       – VHF locator app: N1MM (12060) + VHFCtest4WIN (6767); source
+VHFcallbook.exe      – VHF standalone executable (built, no Python needed)
 callbook.cfg.template     – HF config template (copy to callbook.cfg)
-callbook.cfg              – HF config (gitignored; may hold QRZ login in plain text)
-callbook_cache.json       – HF local lookup cache (auto-created, gitignored)
-n1mm_VHFcallbook.cfg.template / VHFctest4WinCallbook.cfg.template – legacy app templates
+VHFcallbook.cfg.template  – VHF config template (copy to VHFcallbook.cfg)
+callbook.cfg / VHFcallbook.cfg – live configs (gitignored; may hold QRZ login)
 *_cache.json         – per-app local lookup cache (auto-created, gitignored)
 *_window.json        – last window position per app (auto, gitignored)
 qrz_session.json     – cached QRZ XML session key (auto-created, gitignored)
@@ -364,17 +323,24 @@ dev\bench_latency.py – lookup-latency benchmark
 
 ## 7. Changelog
 
-- **New: VHFcallbook 1.0** – the two VHF apps merged into **one window**.
+- **VHFcallbook 1.1** – the legacy VHF apps `n1mm_VHFcallbook` and
+  `VHFctest4WinCallbook` are **removed**. `VHFcallbook` (introduced in
+  1.0) does everything both did: one window listening on **both** the N1MM
+  Logger+ port (**12060**) and the VHFCtest4WIN sharing port (**6767**),
+  whichever logger you use. `VHFApp` was folded straight into
+  `VHFcallbook.py`, so it no longer depends on the deleted module – no
+  behaviour change. Existing `n1mm_VHFcallbook.cfg` /
+  `VHFctest4WinCallbook.cfg` users: copy your settings into
+  `VHFcallbook.cfg`. HF app unchanged.
+- **VHFcallbook 1.0** – the two VHF apps merged into **one window**.
   `VHFcallbook` listens on **both** the N1MM Logger+ port (**12060**) and
   the VHFCtest4WIN sharing port (**6767**) at the same time, so whichever
   logger sends the callsign first drives the same side-by-side locator
-  lookup – no more choosing between `n1mm_VHFcallbook` and
-  `VHFctest4WinCallbook`. The 6767 feed is **on by default** (one UAC
-  prompt if VHFCtest4WIN already holds the port, exactly as before;
+  lookup. The 6767 feed is **on by default** (one UAC prompt if
+  VHFCtest4WIN already holds the port, exactly as before;
   `vhfctest_share=no` in `VHFcallbook.cfg` turns it off). New
-  `VHFcallbook.cfg` / `VHFcallbook_cache.json`. The engine, the HF app and
-  the two legacy VHF apps are **unchanged** and still shipped for now;
-  `VHFcallbook` replaces both of them.
+  `VHFcallbook.cfg` / `VHFcallbook_cache.json`. No engine change; HF app
+  unchanged.
 - **2.16 (HF) / 1.20 (VHF) / 1.2 (VHFctest4WIN)** – **VHF: operator name +
   agreed-locator collapse**. The VHF windows (`n1mm_VHFcallbook` and
   `VHFctest4WinCallbook`) now print the **operator name** in front of the

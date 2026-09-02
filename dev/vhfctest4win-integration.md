@@ -1,8 +1,11 @@
 # VHFCtest4WIN integration
 
-**Status: shipped** as `VHFctest4WinCallbook` (v1.0), and as the
-`vhfctest_share=yes` option on `n1mm_VHFcallbook`. This file is the
-background; the user-facing docs are README section 1 and `CLAUDE.md`.
+**Status: shipped.** Originally a separate app `VHFctest4WinCallbook`
+(v1.0-1.2) plus a `vhfctest_share=yes` option on `n1mm_VHFcallbook`; since
+**VHFcallbook 1.1** both of those are removed and the feed lives in the
+single `VHFcallbook` app (6767 on by default, `vhfctest_share=no` to
+disable). This file is the background; the user-facing docs are README
+section 1 and `CLAUDE.md`.
 
 ## Goal
 

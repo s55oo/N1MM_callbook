@@ -1,9 +1,8 @@
 # VHFCtest4WIN integration - session references
 
-Sessions where this work was done (for `claude --resume`). Historical:
-the `VHFctest4WinCallbook` app these sessions produced was folded into
-`VHFcallbook` and **deleted in VHFcallbook 1.1** - only the resume
-pointers below are still of use.
+Sessions where the VHFCtest4WIN 6767 integration was first built (for
+`claude --resume`). The app has since been folded into `Callbooker`; only
+the resume pointers below are still of use.
 
 ## Session 2 - built and released VHFctest4WinCallbook (2026-08-29)
 

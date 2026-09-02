@@ -69,10 +69,13 @@ def check(label, got, want):
 
 
 def main():
-    import VHFcallbook as vhf
+    import Callbooker as ckr
 
-    hf = make(cb.CallbookApp)
-    vh = make(vhf.VHFcallbookApp)
+    hf = make(cb.CallbookApp)           # base = the HF view
+    vh = make(ckr.CallbookerApp)        # Callbooker switched to the VHF view
+    vh._qrz_fn = None
+    vh._vhf_mode = False
+    vh._apply_mode(True, force=True)
     ok = True
 
     US = {"name": "Fred", "state": "MA", "cqzone": "5", "country": "United States"}

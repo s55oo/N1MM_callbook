@@ -1,34 +1,22 @@
 # SPDX-License-Identifier: Unlicense
-"""N1MM Logger+ Contest Callbook lookup.
+"""Callbooker engine - callsign lookup, the sources, the cache, the window.
 
-A compact always-on-top window that listens to the N1MM Logger+ external
-UDP broadcast (XML, port 12060) and automatically looks up the callsign
-currently in the radio/RX1. Every source is queried in parallel and ALL
-of its values are shown side by side (e.g. "MA/5 MA/5 MA/5" for the US
-state + CQ zone on HF, three locators on the VHF variant), each slot
-filling in as soon as that source answers, so disagreements between
-sources stand out and the operator can pick the right one. For non-US
-(DX) stations the HF window shows the operator name and country followed
-by the CQ zone from each source.
+Not run directly. ``Callbooker.py`` imports this module for ``CallbookApp``
+(the always-on-top Tkinter window and all lookup orchestration), ``run()``
+(the entry point), and the source functions. Every source is queried in
+parallel and ALL of its values are shown side by side, so disagreements
+stand out and the operator can pick the right one.
 
 QRZCQ.com is a public, free callbook that needs no account or API key -
 each callsign has a page at https://www.qrzcq.com/call/<CALL> whose
-lookup info is parsed from the HTML. HamQTH.com and (VHF) the QRZ.com
-public page back it up; the paid QRZ.com XML service can also be added
-when credentials are configured.
-
-Lookups are cached locally in a JSON file to avoid repeated network
-fetches for the same callsign and to stay polite to the server.
+lookup info is parsed from the HTML. HamQTH.com backs it up; QRZ.com is
+the paid XML service when credentials are configured, else its public
+/db/ page for the locator. Lookups are cached locally in a JSON file.
 
 Made by S55OO with AI assistance.
-
-Version: 2.17
-
-Usage:
-    python n1mm_callbook.py [--port 12060] [--config callbook.cfg]
 """
 
-__version__ = "2.17"
+__version__ = "1.1"
 
 import argparse
 import base64
@@ -48,7 +36,7 @@ import tkinter.font as tkfont
 import urllib.parse
 import xml.etree.ElementTree as ET
 
-USER_AGENT = "Mozilla/5.0 N1MM_callbook/2.17"
+USER_AGENT = "Mozilla/5.0 Callbooker/1.1"
 HAMQTH_UA = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
     "(KHTML, like Gecko) Chrome/126.0 Safari/537.36"
@@ -176,9 +164,8 @@ def packet_freq_mhz(data):
 
     N1MM carries the frequency in ``<rxfreq>`` / ``<txfreq>`` (on
     LookupInfo / ContactInfo) and ``<Freq>`` / ``<TXFreq>`` (on RadioInfo),
-    all in *tens of hertz* - e.g. ``14430000`` is 144.300 MHz. Only used by
-    the combined ``Callbooker`` app, to choose the HF vs VHF display; the
-    stand-alone HF and VHF apps ignore it.
+    all in *tens of hertz* - e.g. ``14430000`` is 144.300 MHz. Callbooker
+    uses this to choose the HF vs VHF view per callsign.
     """
     raw = data.decode("utf-8", errors="replace")
     start = raw.find("<")
@@ -638,9 +625,8 @@ def hamqth_lookup(call, timeout=15):
     """Query HamQTH.com public page for a callsign.
 
     HamQTH mirrors the same fields as QRZCQ (name, QTH, grid locator,
-    country, ...) and is used as an additional/fallback source - most
-    useful for the VHF variant, where the "Grid" row carries the
-    QRA/maidenhead locator of the worked station.
+    country, ...) and is used as an additional source - its "Grid" row
+    carries the QRA/maidenhead locator for the VHF view.
 
     Returns a dict in the same shape as qrzcq_lookup, or None on
     network error. Fields that are absent or hidden come back empty.
@@ -906,13 +892,11 @@ def load_config(path):
 
 
 def run(app_class, config_name, cache_name, description, always_vhfctest=False):
-    """Shared entry point for the apps: parse the CLI args and config file,
-    build ``app_class`` (CallbookApp or a subclass) and run the Tk loop.
-    Only the file names and the ArgumentParser description differ between
-    the HF and VHF apps. ``always_vhfctest=True`` turns the VHFCtest4WIN
-    6767 feed on regardless of ``vhfctest_share``; ``VHFcallbook`` passes a
-    value computed from its own config there (feed on unless
-    ``vhfctest_share=no``), which is why the feed defaults differ per app.
+    """Entry point: parse the CLI args and config file, build ``app_class``
+    (``CallbookerApp``) and run the Tk loop. ``always_vhfctest`` turns the
+    VHFCtest4WIN 6767 feed on regardless of ``vhfctest_share``; Callbooker
+    passes a value it computed from its own config (feed on unless
+    ``vhfctest_share=no``).
     """
     parser = argparse.ArgumentParser(description=description)
     parser.add_argument("--port", type=int, default=DEFAULT_PORT)
@@ -921,7 +905,7 @@ def run(app_class, config_name, cache_name, description, always_vhfctest=False):
         default=os.path.join(app_dir(), config_name),
         help="config file (same folder as the exe by default)",
     )
-    # Set by VHFcallbook's elevated self-relaunch; only used to stop that
+    # Set by Callbooker's elevated self-relaunch; only used to stop that
     # relaunch from looping. Hidden from --help.
     parser.add_argument("--elevated", action="store_true", help=argparse.SUPPRESS)
     args = parser.parse_args()
@@ -953,9 +937,8 @@ def run(app_class, config_name, cache_name, description, always_vhfctest=False):
         selftest_call = ""
 
     # VHFCtest4WIN pre-log callsign feed on its multi-op sharing port
-    # (6767). always_vhfctest is set by VHFcallbook (to a value it computed
-    # from vhfctest_share, default yes); otherwise the feed is opt-in via
-    # vhfctest_share on any VHFCTEST_CAPABLE app.
+    # (6767). Callbooker passes always_vhfctest computed from vhfctest_share
+    # (default yes); the flag is what forces the second listener on.
     vhfctest_port = 0
     share = settings.get("vhfctest_share", "no").strip().lower() in (
         "yes", "true", "1", "on",
@@ -963,14 +946,12 @@ def run(app_class, config_name, cache_name, description, always_vhfctest=False):
     if always_vhfctest or (getattr(app_class, "VHFCTEST_CAPABLE", False) and share):
         vhfctest_port = as_int("vhfctest_port", 6767)
 
-    # Side files live next to the cache: the remembered window position
-    # and the QRZ XML session key (shared by both apps - same QRZ account).
+    # Side files live next to the cache: the remembered window position /
+    # view and the QRZ XML session key.
     data_dir = os.path.dirname(cache_file)
     win_file = os.path.splitext(cache_file)[0] + "_window.json"
     qrz_session_load(os.path.join(data_dir, "qrz_session.json"))
 
-    # Optional QRZ.com XML service (paid subscription). Empty credentials
-    # keep QRZ out of the lookup chain.
     root = tk.Tk()
     app_class(
         root,
@@ -988,39 +969,41 @@ def run(app_class, config_name, cache_name, description, always_vhfctest=False):
 
 
 class CallbookApp:
-    # Shown in the title bar. The VHF subclass overrides it with its own
-    # module version (they are released on separate version numbers).
+    # The window + all lookup orchestration. ``CallbookerApp`` in
+    # Callbooker.py subclasses this and flips the display attributes below
+    # (SLOT_FIELDS / SLOT_SEP / DX_COUNTRY / lookup_chain) at runtime to
+    # switch between the HF (state / CQ zone) and VHF (locator) views. The
+    # defaults here are the HF view.
     VERSION = __version__
-    APP_TITLE = "N1MM Callbook"
+    APP_TITLE = "Callbooker"
     # Fields the main area shows per source, joined with "/" into one token
     # per slot. Every source contributes its own token and ALL of them are
     # shown side by side (e.g. "MA/5 MA/5 MA/5"), so the operator sees when
-    # sources disagree and can pick the right value for the exchange. The
-    # HF app shows US state + CQ zone; the VHF variant only the locator.
+    # sources disagree and can pick the right value. HF view: US state +
+    # CQ zone; VHF view: the locator only.
     SLOT_FIELDS = ("state", "cqzone")
-    # String placed between the per-source slots. HF keeps a plain space
-    # (the name already has a " - " after it); VHF uses " - " so three
-    # locators read as "JN76HD - JN76HD - JN76HD", not a run-on.
+    # String between the per-source slots. HF keeps a plain space (the name
+    # already has " - " after it); VHF uses " - " so the locators read as
+    # "JN76HD - JN76HD - JN76HD", not a run-on.
     SLOT_SEP = " "
-    # Show the operator name too (printed once, shortest of the sources).
+    # Show the operator's first name too (printed once, in front).
     SHOW_NAME = True
-    # Append " (Country)" to that name for a non-US (DX) call. HF does this;
-    # the VHF variants turn it off - they stay locator-focused.
+    # Append " (Country)" to that name for a non-US (DX) call. Callbooker
+    # turns this off in both views - the CQ zone is the multiplier.
     DX_COUNTRY = True
     # When every source that answered returns the same slot value, show it
-    # just once in a larger font instead of repeating it per source:
-    # "Fred - MA/5" not "Fred - MA/5 MA/5 MA/5" (HF), "Hans - JN76HD" not
-    # "Hans - JN76HD - JN76HD - JN76HD" (VHF). On for every app.
+    # once in a larger font instead of repeating it: "Fred - MA/5" not
+    # "Fred - MA/5 MA/5 MA/5", "Hans - JN76HD" not "Hans - JN76HD - ...".
     COLLAPSE_ON_AGREE = True
-    # Lookup sources run in order; every source's value is kept separately.
-    # Variants can add more sources.
+    # The free sources, queried in order; every source's value is kept
+    # separately. A QRZ slot is prepended by __init__ / _apply_mode.
     LOOKUP_CHAIN = (qrzcq_lookup, hamqth_lookup)
     # Give QRZ a slot even with no XML credentials (the public /db/ page
-    # still yields the locator). Off on HF - anonymous QRZ has nothing the
-    # HF view shows; on for the VHF apps, where the locator is the point.
+    # still yields the locator). Off in the HF view - anonymous QRZ has
+    # nothing it shows; on in the VHF view, where the locator is the point.
     QRZ_WEB_FALLBACK = False
-    # Whether this variant can take the optional VHFCtest4WIN pre-log
-    # callsign feed (see v4w_listener_loop). VHF only.
+    # Whether the app takes the VHFCtest4WIN pre-log 6767 feed
+    # (see v4w_listener_loop). True on CallbookerApp.
     VHFCTEST_CAPABLE = False
 
     def __init__(self, root, cache_path, port, cache_days, qrz_username="",
@@ -1546,16 +1529,3 @@ class CallbookApp:
         self.cache.flush(force=True)
         self.stop.set()
         self.root.destroy()
-
-
-def main():
-    run(
-        CallbookApp,
-        "callbook.cfg",
-        "callbook_cache.json",
-        "N1MM Logger+ contest callbook",
-    )
-
-
-if __name__ == "__main__":
-    main()

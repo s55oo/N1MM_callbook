@@ -1,8 +1,8 @@
 # SPDX-License-Identifier: Unlicense
 """Measure callbook lookup latency: per source and end to end.
 
-QRZ XML credentials, if you want that source measured, are read from
-`callbook.cfg` (same as the app) - nothing is hard-coded here.
+QRZ credentials, if you want that source measured, are read from
+`Callbooker.cfg` (same as the app) - nothing is hard-coded here.
 
 Run:  python dev/bench_latency.py
 """
@@ -20,7 +20,7 @@ import n1mm_callbook as cb  # noqa: E402
 CALLS = ["W1AW", "K3LR", "K1TTT", "W3LPL", "K1LZ", "S55OO", "S56A", "K9LP"]
 REPEATS = 3
 
-cfg = cb.load_config(os.path.join(ROOT, "callbook.cfg"))
+cfg = cb.load_config(os.path.join(ROOT, "Callbooker.cfg"))
 QRZ_USER = cfg.get("qrz_username", "")
 QRZ_PASS = cfg.get("qrz_password", "")
 
@@ -41,12 +41,13 @@ def time_call(fn, call):
     return time.perf_counter() - t0
 
 
-SOURCES = [("qrzcq", cb.qrzcq_lookup), ("hamqth", cb.hamqth_lookup)]
-if QRZ_USER and QRZ_PASS:
-    SOURCES.insert(0, ("qrz xml", functools.partial(
-        cb.qrz_lookup, username=QRZ_USER, password=QRZ_PASS)))
-else:
-    print("(no qrz_username/qrz_password in callbook.cfg - skipping QRZ XML)\n")
+SOURCES = [
+    ("qrz", functools.partial(cb.qrz_lookup, username=QRZ_USER, password=QRZ_PASS)),
+    ("qrzcq", cb.qrzcq_lookup),
+    ("hamqth", cb.hamqth_lookup),
+]
+if not (QRZ_USER and QRZ_PASS):
+    print("(no qrz_username/qrz_password in Callbooker.cfg - QRZ = public page)\n")
 
 # warm the connection pool and the QRZ session
 for _, fn in SOURCES:

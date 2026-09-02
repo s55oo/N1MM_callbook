@@ -1,39 +1,39 @@
 # SPDX-License-Identifier: Unlicense
 """Callbooker - one contest-callbook window for HF and VHF.
 
-Combines the HF callbook (``n1mm_callbook``) and the VHF locator lookup
-(``VHFcallbook``) into a single app that picks the right display per
-callsign:
+An always-on-top Tkinter window that looks up the callsign being worked
+and shows every source side by side, picking the right view per callsign:
 
 * Callsign from **VHFCtest4WIN** (its multi-op sharing broadcast, UDP
-  **6767**, sent as you type) -> always the **VHF** view: operator name +
+  **6767**, sent as you type) -> always the **VHF** view: first name +
   each source's QRA/maidenhead locator side by side, collapsing to one
   larger green locator when they agree.
 * Callsign from **N1MM Logger+** (UDP **12060**) -> the frequency in the
   packet (or the last one seen on a ``RadioInfo`` broadcast) decides:
-  **>= 30 MHz -> VHF** view, **< 30 MHz -> HF** view (operator name, CQ
-  zone, and US state for North-American stations). When no frequency is
-  known yet the last-used view is remembered from the previous run (HF on
-  a first run).
+  **>= 30 MHz -> VHF** view, **< 30 MHz -> HF** view (first name, CQ zone,
+  and US state for North-American stations). With no frequency yet the
+  last-used view is remembered from the previous run (HF on a first run).
 
 Both feeds run at once. The 6767 feed is on by default; if VHFCtest4WIN
 already holds the port the app relaunches itself elevated (one UAC
 prompt) to read it with a raw capture socket. ``vhfctest_share=no`` in
 ``Callbooker.cfg`` turns that feed - and the prompt - off.
 
-All sources, the paid QRZ.com XML slot, the cache and the start-up
-self-test work exactly as in the two apps this one replaces. Lookups are
+Sources: QRZCQ.com and HamQTH.com (free, no account), plus a QRZ column -
+the paid QRZ.com XML API when a login is configured and the subscription
+is live, otherwise the public /db/ page for the locator. The lookup
+engine, window and sources are in ``n1mm_callbook.py``. Lookups are
 cached in ``Callbooker_cache.json``.
 
 Made by S55OO with AI assistance.
 
-Version: 1.0
+Version: 1.1
 
 Usage:
     python Callbooker.py [--port 12060] [--config Callbooker.cfg]
 """
 
-__version__ = "1.0"
+__version__ = "1.1"
 
 import ctypes
 import functools
@@ -177,7 +177,7 @@ class CallbookerApp(cb.CallbookApp):
     def on_packet(self, src, data):
         # N1MM feed. Track the frequency (from this packet or the last
         # RadioInfo), pick the view, then hand the callsign to the shared
-        # path - exactly as the stand-alone HF app does.
+        # path (the base on_packet, minus the view step).
         if src not in self.local:
             return
         mhz = cb.packet_freq_mhz(data)

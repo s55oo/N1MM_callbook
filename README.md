@@ -1,6 +1,6 @@
 # N1MM Callbook – N1MM Logger+ Contest Callbook
 
-> **Version:** 2.15 (HF) / 1.19 (VHF) / 1.1 (VHFCtest4WIN) · Made by **S55OO** with AI assistance.
+> **Version:** 2.16 (HF) / 1.20 (VHF) / 1.2 (VHFCtest4WIN) · Made by **S55OO** with AI assistance.
 > · **Public domain** – see [LICENSE](LICENSE).
 
 A compact always-on-top window that listens to the N1MM Logger+ external
@@ -26,9 +26,13 @@ free sources.
 
 A **VHF variant** (`n1mm_VHFcallbook.py` / `n1mm_VHFcallbook.exe`) is also
 included. It uses the same engine but shows the worked station's
-**QRA/maidenhead locator** (e.g. `JN76HD`) in the main area, from the
-sources shown side by side – handy for VHF/UHF contests where the grid
-square is the exchange. The **locator sources**:
+**QRA/maidenhead locator** (e.g. `JN76HD`) in the main area, with the
+**operator name** in front of it, from the sources shown side by side –
+handy for VHF/UHF contests where the grid square is the exchange. When
+every source that answered returns the **same** locator the row collapses
+to a single value in a **larger green font** (`Goran - JN76HD`) – a quick
+"grid confirmed" signal; when they differ you see each one and can pick
+the right value. The **locator sources**:
 
 | Source | How the locator is read |
 |---|---|
@@ -80,8 +84,9 @@ QSO is *logged*. **`VHFctest4WinCallbook`** is a dedicated variant that
 instead listens to VHFCtest4WIN's **multi-op sharing broadcast** (UDP
 **6767**), which carries the callsign **as it is typed** – so the locator
 lookup runs *before* the QSO is logged and a wrong QRA locator can be
-caught while it is still editable. Same three locator sources shown side
-by side, same green "all agree" signal.
+caught while it is still editable. Same locator sources shown side by side
+with the operator name, same collapse to one larger green locator when
+they all agree.
 
 - Nothing to switch on in VHFCtest4WIN – it already broadcasts its entry
   field on 6767 as part of normal network sharing.
@@ -179,8 +184,12 @@ python VHFctest4WinCallbook.py [--config VHFctest4WinCallbook.cfg]
   returns in the state field (e.g. `HE` for a German call) is ignored; the
   CQ zone, which is meaningful worldwide, is kept.
 - The **VHF variant** shows the **QRA/maidenhead locator** the same
-  side-by-side way, separated by ` - ` (`JN76HD - JN76HD - JN76HD`), and
-  has no name/DX handling – it only needs the grid.
+  side-by-side way, separated by ` - `, with the **operator name** printed
+  once in front (`Hans - JN76GB - JN76HD - JN76HD`). **When every source
+  that answered agrees on the locator the row collapses to one value in a
+  larger green font** (`Hans - JN76HD`); a disagreement keeps every slot
+  visible so the wrong one stands out. It has no country/DX handling – for
+  a VHF exchange only the grid and the name matter.
 - **Local computer only:** the app only reacts to packets sent from *this*
   PC (identified by its local interface IPs). Broadcasts from other
   stations on the network are ignored, so only the local operator's
@@ -332,6 +341,15 @@ dev\bench_latency.py – lookup-latency benchmark
 
 ## 7. Changelog
 
+- **2.16 (HF) / 1.20 (VHF) / 1.2 (VHFctest4WIN)** – **VHF: operator name +
+  agreed-locator collapse**. The VHF windows (`n1mm_VHFcallbook` and
+  `VHFctest4WinCallbook`) now print the **operator name** in front of the
+  locators, and **when every source that answered agrees they collapse to
+  a single locator in a larger green font** (`Hans - JN76HD`) instead of
+  repeating it per source. A disagreement still shows every slot so the
+  wrong grid stands out. Shared-engine change (new `DX_COUNTRY` /
+  `COLLAPSE_ON_AGREE` class flags) – all three apps bump; HF display
+  unchanged.
 - **2.15 (HF) / 1.19 (VHF) / 1.1 (VHFctest4WIN)** – **start-up self-test**:
   on launch each configured source is queried once (callsign **S55OO** by
   default) and the window lists them line by line with `OK` / `no data` /

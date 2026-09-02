@@ -14,7 +14,9 @@ obvious and the operator picks the right value for the exchange.
 - **HF** (`n1mm_callbook.py`, v2.x): shows `name - state/zone state/zone …`;
   for DX (non-US) stations `name (country) - zone zone …`.
 - **VHF** (`n1mm_VHFcallbook.py`, v1.x): shows the maidenhead locator per
-  source. It is a ~30-line subclass of the HF app's `CallbookApp`.
+  source, with the operator name in front; when every source that answered
+  agrees the row collapses to one locator in a larger green font
+  (`Hans - JN76HD`). A ~30-line subclass of the HF app's `CallbookApp`.
 - **VHFCtest4WIN** (`VHFctest4WinCallbook.py`, v1.0): the VHF app fed from
   **VHFCtest4WIN**'s multi-op sharing broadcast (UDP 6767) instead of an
   N1MM packet, so the lookup runs *as the callsign is typed*, pre-log. A
@@ -73,10 +75,15 @@ sources agree.
 `_render_slots` builds the display string. `_source_value` joins the
 `SLOT_FIELDS` into one `a/b` token per slot; the `state` field is dropped
 when the source's country is non-US (`_US_NAMES`), but `cqzone` is kept.
-`_is_dx` decides the `name (country)` vs `name` prefix. Slots are joined
+`_is_dx` decides the `name (country)` vs `name` prefix – only consulted
+when `DX_COUNTRY` is set (HF; the VHF apps turn it off). Slots are joined
 by `SLOT_SEP`; an empty slot is `SLOT_EMPTY` (`·`), a pending one
 `SLOT_PENDING` (`…`). When `all_done` and every real value matches (>=2 of
-them) the text fill is `TEXT_AGREE` (light green) instead of `TEXT_DEFAULT`.
+them) the text fill is `TEXT_AGREE` (light green) instead of `TEXT_DEFAULT`
+(`agree`). When `agree` **and** `COLLAPSE_ON_AGREE` (the VHF apps), that
+one value is shown once instead of `SLOT_SEP`-joined, and – unless the
+name pushes the line past `FONT_BIG_MAXLEN` – drawn at `FONT_SIZE_BIG`
+instead of the usual length-based `_font_for`.
 
 ### Class attributes a variant overrides
 
@@ -85,7 +92,9 @@ VERSION       # title-bar version — set per subclass, NOT the module __version
 APP_TITLE
 SLOT_FIELDS   # HF ("state","cqzone");  VHF ("grid",)
 SLOT_SEP      # HF " " (name already has " - " after it);  VHF " - "
-SHOW_NAME     # HF True; VHF False
+SHOW_NAME     # HF True; VHF also True (name printed once, in front of the grids)
+DX_COUNTRY    # HF True (name -> "name (country)" for DX);  VHF False
+COLLAPSE_ON_AGREE  # base False; True on VHFApp — all sources agree -> one big green value
 LOOKUP_CHAIN  # the free sources; qrz_lookup is prepended by __init__ when creds exist
 VHFCTEST_CAPABLE  # base False; True on VHFApp — allows the vhfctest_share 6767 feed
 ```

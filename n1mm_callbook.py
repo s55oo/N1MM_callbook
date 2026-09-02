@@ -22,13 +22,13 @@ fetches for the same callsign and to stay polite to the server.
 
 Made by S55OO with AI assistance.
 
-Version: 2.15
+Version: 2.16
 
 Usage:
     python n1mm_callbook.py [--port 12060] [--config callbook.cfg]
 """
 
-__version__ = "2.15"
+__version__ = "2.16"
 
 import argparse
 import base64
@@ -47,7 +47,7 @@ import tkinter as tk
 import urllib.parse
 import xml.etree.ElementTree as ET
 
-USER_AGENT = "Mozilla/5.0 N1MM_callbook/2.15"
+USER_AGENT = "Mozilla/5.0 N1MM_callbook/2.16"
 HAMQTH_UA = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
     "(KHTML, like Gecko) Chrome/126.0 Safari/537.36"
@@ -69,6 +69,12 @@ SLOT_PENDING = "…"  # a source is still being queried ("…")
 FONT_SIZE_NAME = 18
 FONT_SIZE_FOOTER = 10
 FONT_SIZES = [(14, 18), (24, 15), (34, 13), (9999, 11)]
+# When the VHF view collapses to a single agreed locator (COLLAPSE_ON_AGREE)
+# it is drawn ~two steps larger than the normal 18 pt - unless the operator
+# name in front of it pushes the line past FONT_BIG_MAXLEN characters, in
+# which case the usual length-based sizing is used so it still fits.
+FONT_SIZE_BIG = 26
+FONT_BIG_MAXLEN = 16
 
 # Start-up self-test. On launch every configured source is queried once
 # for PRECHECK_CALL and the window lists, source by source, whether it
@@ -935,8 +941,14 @@ class CallbookApp:
     # locators read as "JN76HD - JN76HD - JN76HD", not a run-on.
     SLOT_SEP = " "
     # Show the operator name too (printed once, shortest of the sources).
-    # The VHF variant only needs the locator, hence False there.
     SHOW_NAME = True
+    # Append " (Country)" to that name for a non-US (DX) call. HF does this;
+    # the VHF variants turn it off - they stay locator-focused.
+    DX_COUNTRY = True
+    # When every source that answered returns the same slot value, show it
+    # just once in a larger font ("JN76HD") instead of repeating it per
+    # source ("JN76HD - JN76HD - JN76HD"). Off on HF, on for the VHF apps.
+    COLLAPSE_ON_AGREE = False
     # Lookup sources run in order; every source's value is kept separately.
     # Variants can add more sources.
     LOOKUP_CHAIN = (qrzcq_lookup, hamqth_lookup)
@@ -1365,9 +1377,10 @@ class CallbookApp:
         # "…" and one that answered with nothing shows "·", so results
         # appear as they arrive. When every source that answered agrees the
         # text turns light green. Example final lines:
-        #   HF, US:  "Dave - MA/5 MA/5 MA/5"       (state / CQ zone per source)
-        #   HF, DX:  "Hans (Germany) - 14 14 14"
-        #   VHF:     "JN76HD - JN76HD - JN76HD - JN76HD"
+        #   HF, US:   "Dave - MA/5 MA/5 MA/5"      (state / CQ zone per source)
+        #   HF, DX:   "Hans (Germany) - 14 14 14"
+        #   VHF:      "Hans - JN76GB - JN76HD - JN76HD"   (sources disagree)
+        #   VHF agree: "Hans - JN76HD"  (collapsed, larger font, green)
         finished = [slots[i] for i in range(len(slots)) if i not in pending]
         any_data = any(self._source_value(s) for s in finished if s)
         vals = []
@@ -1384,18 +1397,22 @@ class CallbookApp:
         # (and there are at least two), the operator can trust it: green.
         real_vals = [v for v in vals if v not in (SLOT_EMPTY, SLOT_PENDING)]
         agree = all_done and len(real_vals) >= 2 and len(set(real_vals)) == 1
+        # VHF: when they all agree, show the value once (larger) instead of
+        # "JN76HD - JN76HD - JN76HD".
+        collapsed = agree and self.COLLAPSE_ON_AGREE
         fill = TEXT_DEFAULT
+        big = False
         if not finished:
             text = SLOT_PENDING
             bg = COLOR_ACTIVE
         elif any_data or have_name:
-            line = self.SLOT_SEP.join(vals)
+            line = real_vals[0] if collapsed else self.SLOT_SEP.join(vals)
             if self.SHOW_NAME:
                 name = self._best_name(finished)
                 prefix = name
                 # DX station: prepend the country, since there is no US
                 # state (the slots then carry just the CQ zone).
-                if self._is_dx(finished):
+                if self.DX_COUNTRY and self._is_dx(finished):
                     country = self._best_country(finished)
                     if country:
                         prefix = "{} ({})".format(name, country) if name else country
@@ -1408,6 +1425,7 @@ class CallbookApp:
             bg = COLOR_ACTIVE
             if agree:
                 fill = TEXT_AGREE
+            big = collapsed and len(text) <= FONT_BIG_MAXLEN
         elif not all_done:
             text = SLOT_PENDING
             bg = COLOR_ACTIVE
@@ -1416,7 +1434,8 @@ class CallbookApp:
             bg = COLOR_IDLE
         self.canvas.configure(bg=bg)
         self.canvas.itemconfigure(self.main_id, text=text, fill=fill)
-        self.canvas.itemconfigure(self.main_id, font=self._font_for(len(text)))
+        font = ("Segoe UI", FONT_SIZE_BIG, "bold") if big else self._font_for(len(text))
+        self.canvas.itemconfigure(self.main_id, font=font)
 
     def _font_for(self, length):
         for limit, size in FONT_SIZES:

@@ -18,6 +18,7 @@ class FakeCanvas:
         self.text = None
         self.bg = None
         self.fill = None
+        self.font = None
 
     def configure(self, **kw):
         if "bg" in kw:
@@ -28,6 +29,8 @@ class FakeCanvas:
             self.text = kw["text"]
         if "fill" in kw:
             self.fill = kw["fill"]
+        if "font" in kw:
+            self.font = kw["font"]
 
     def coords(self, *a):
         pass
@@ -71,6 +74,10 @@ def main():
         app._render_slots("T", slots, set(pending))
         return app.canvas.fill
 
+    def rsize(app, slots, pending=frozenset()):
+        app._render_slots("T", slots, set(pending))
+        return app.canvas.font[1]
+
     ok &= check("HF US, all agree", r(hf, [US, US2, US]), "Fred - MA/5 MA/5 MA/5")
     ok &= check("HF US, one source has no zone", r(hf, [US, USnz, US]), "Fred - MA/5 MA MA/5")
     ok &= check("HF US, 2 slots pending", r(hf, [US, None, None], {1, 2}), "Fred - MA/5 … …")
@@ -80,14 +87,33 @@ def main():
     ok &= check("HF nothing", r(hf, [EMPTY, EMPTY, EMPTY]), "no data")
     ok &= check("HF all failed", r(hf, [None, None, None]), "lookup failed")
 
-    ok &= check("VHF locators joined with ' - '",
-                r(vh, [{"grid": "JN76HD"}, {"grid": "JN76HD"}, {"grid": ""}]),
-                "JN76HD - JN76HD - ·")
-    ok &= check("VHF stale lowercase grid upper-cased",
+    ok &= check("VHF sources disagree -> joined with ' - ', name in front",
+                r(vh, [{"grid": "JN76HD", "name": "Hans"},
+                       {"grid": "JN76GB", "name": "Hans"},
+                       {"grid": "", "name": "Hans"}]),
+                "Hans - JN76HD - JN76GB - ·")
+    ok &= check("VHF all agree -> collapsed to one locator + name",
+                r(vh, [{"grid": "JN76HD", "name": "Hans"}] * 3), "Hans - JN76HD")
+    ok &= check("VHF all agree -> collapsed line uses the big font",
+                rsize(vh, [{"grid": "JN76HD", "name": "Hans"}] * 3), cb.FONT_SIZE_BIG)
+    ok &= check("VHF disagree -> normal length-based font",
+                rsize(vh, [{"grid": "JN76HD", "name": "Hans"},
+                           {"grid": "JN76GB", "name": "Hans"},
+                           {"grid": "JN76HD", "name": "Hans"}]) != cb.FONT_SIZE_BIG,
+                True)
+    ok &= check("VHF collapsed but long name -> still one locator",
+                r(vh, [{"grid": "JN76HD", "name": "Wolfgang-Dietrich"}] * 3),
+                "Wolfgang-Dietrich - JN76HD")
+    ok &= check("VHF collapsed but long name -> falls back to normal font",
+                rsize(vh, [{"grid": "JN76HD", "name": "Wolfgang-Dietrich"}] * 3)
+                != cb.FONT_SIZE_BIG, True)
+    ok &= check("VHF no name, all agree -> bare collapsed locator",
+                r(vh, [{"grid": "JN76HD"}] * 3), "JN76HD")
+    ok &= check("VHF stale lowercase grid upper-cased then collapsed",
                 r(vh, [{"grid": "jn46la"}, {"grid": "JN46LA"}, {"grid": "JN46LA"}]),
-                "JN46LA - JN46LA - JN46LA")
-    ok &= check("VHF DX with no grid stays 'no data'",
-                r(vh, [{"grid": "", "name": "Hans", "country": "Germany"}] * 3), "no data")
+                "JN46LA")
+    ok &= check("VHF name but no grid anywhere -> name alone",
+                r(vh, [{"grid": "", "name": "Hans", "country": "Germany"}] * 3), "Hans")
 
     # agreement colour
     ok &= check("VHF all agree -> green text",

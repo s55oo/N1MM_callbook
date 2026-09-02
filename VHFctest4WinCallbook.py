@@ -2,9 +2,9 @@
 """VHFCtest4WIN pre-log locator check.
 
 The side-by-side locator lookup of ``n1mm_VHFcallbook`` (QRZCQ.com,
-HamQTH.com and the public QRZ.com page, shown next to each other and
-turning green when they agree) - but driven by **VHFCtest4WIN** instead of
-N1MM Logger+.
+HamQTH.com and the public QRZ.com page, shown next to each other with the
+operator name in front, collapsing to one larger green locator when they
+agree) - but driven by **VHFCtest4WIN** instead of N1MM Logger+.
 
 VHFCtest4WIN (S52AA's VHF contest logger) broadcasts the callsign in its
 entry field on its multi-op sharing port (UDP **6767**) as the operator
@@ -28,13 +28,13 @@ needs a QRZ XML subscription). Lookups are cached in
 
 Made by S55OO with AI assistance.
 
-Version: 1.1
+Version: 1.2
 
 Usage:
     python VHFctest4WinCallbook.py [--config VHFctest4WinCallbook.cfg]
 """
 
-__version__ = "1.1"
+__version__ = "1.2"
 
 import ctypes
 import os

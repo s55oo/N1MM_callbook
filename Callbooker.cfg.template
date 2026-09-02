@@ -1,0 +1,34 @@
+# Configuration template for Callbooker - the combined HF + VHF callbook
+# (auto-picks the view: N1MM frequency >= 30 MHz or a VHFCtest4WIN feed
+# -> VHF locators; < 30 MHz -> HF name / CQ zone / US state).
+# Copy this file to "Callbooker.cfg" (same folder as the EXE/script) and
+# edit the values you need. The app runs fine with defaults too.
+
+[settings]
+# UDP port N1MM Logger+ broadcasts on (External Broadcast -> 12060 default).
+# Callbooker also listens on VHFCtest4WIN's port 6767 automatically.
+udp_port=12060
+
+# Sources (QRZCQ.com, HamQTH.com, and - in the VHF view - the public
+# QRZ.com page) are queried in parallel and cached. cache_days = how long
+# a cached result stays fresh.
+cache_days=30
+cache_file=Callbooker_cache.json
+
+# cache_persist=no keeps the cache in memory only - zero disk writes,
+# still de-dupes within the session. Default: yes.
+# cache_persist=yes
+
+# Start-up self-test (probe every source once on launch): on by default.
+# selftest=no
+# selftest_call=S55OO
+
+# VHFCtest4WIN pre-log feed (UDP 6767) is ON by default; a callsign from
+# it always uses the VHF view. Uncomment to disable it (also stops the
+# "run as Administrator" prompt):
+# vhfctest_share=no
+
+# Paid QRZ.com XML Callbook Data service - adds a slot to whichever view
+# is active. Requires an active QRZ XML subscription.
+# qrz_username=S55OO
+# qrz_password=YOUR_QRZ_PASSWORD

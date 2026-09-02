@@ -11,24 +11,30 @@ Every configured source is queried **in parallel** and *all* of its
 values are shown side by side, so when sources disagree the wrong one is
 obvious and the operator picks the right value for the exchange.
 
-- **HF** (`n1mm_callbook.py`, v2.x): shows `name - state/zone state/zone …`;
-  for DX (non-US) stations `name (country) - zone zone …`. When every
-  source agrees the repeated token collapses to one in a larger green font
-  (`Fred - MA/5`).
-- **VHF** (`VHFcallbook.py`, v1.x): the same, showing the maidenhead
-  locator per source instead of state/zone (`Hans - JN76HD` when all
-  agree). `VHFcallbookApp` is a ~35-line subclass of the HF app's
-  `CallbookApp`. It listens on **both** the N1MM port (12060) and
-  VHFCtest4WIN's multi-op sharing broadcast (UDP 6767) at once, so it
-  works with either logger; the 6767 feed also carries the callsign *as
-  it is typed*, pre-log. `main()` reads `vhfctest_share` (**default yes**)
-  *before* the GUI via `_wants_v4w_feed()` so the UAC self-relaunch can be
+- **`Callbooker.py`** (v1.x) — **the shipping app**: one window that does
+  both. `CallbookerApp(CallbookApp)` flips the HF/VHF view **per
+  callsign** in `_apply_mode(vhf)` (plain attribute writes to
+  `SLOT_FIELDS` / `SLOT_SEP` / `DX_COUNTRY` / `lookup_chain` — the render
+  path reads them fresh, so the next `_render_slots` is in the new view;
+  safe from the listener thread, like the base `_handle_call`). A
+  VHFCtest4WIN callsign → VHF (`_poll_inbox` override forces it before
+  draining `_v4w_inbox`). An N1MM callsign → `_apply_mode(mhz >= 30)`,
+  `mhz` from `packet_freq_mhz` on this packet or the last one seen
+  (`RadioInfo` included). No frequency yet → the view saved in
+  `*_window.json` (`{"mode": "hf"|"vhf"}`), HF on a first run.
+- **HF** (`n1mm_callbook.py`, v2.x): HF-only. `name - state/zone …`; DX
+  `name (country) - zone …`; agreed token collapses to one, larger green.
+- **VHF** (`VHFcallbook.py`, v1.x): VHF-only — maidenhead locator per
+  source instead of state/zone (`Hans - JN76HD` when all agree). Also
+  listens on 6767. `main()` reads `vhfctest_share` (**default yes**)
+  *before* the GUI via `_wants_v4w_feed()` so the UAC self-relaunch is
   skipped when the feed is off, then calls
-  `run(..., always_vhfctest=<that bool>)` — passing the computed bool
-  covers both "force on" and "off unless cfg opts in", so no engine
-  change was needed. (History: `VHFcallbook` 1.0 merged and replaced the
-  old `n1mm_VHFcallbook` + `VHFctest4WinCallbook`; 1.1 deleted them and
-  folded `VHFApp` into `VHFcallbook.py`.)
+  `run(..., always_vhfctest=<that bool>)`. `Callbooker` shares that
+  `main()` shape (its own `CONFIG_NAME`).
+
+`n1mm_callbook` and `VHFcallbook` are the single-purpose apps, kept for
+now; `Callbooker` supersedes both. (History: `VHFcallbook` 1.0 merged the
+old `n1mm_VHFcallbook` + `VHFctest4WinCallbook`, 1.1 deleted them.)
 
 Pure Python standard library — no third-party runtime dependencies. The
 VHFCtest4WIN raw-capture (`_v4w_raw_listen`, a Windows `SIO_RCVALL`
@@ -42,8 +48,9 @@ PyInstaller is only needed to build the EXEs. Public domain (Unlicense).
 
 | Piece | Role |
 |---|---|
-| `packet_callsign()` | pull the worked call out of a `LookupInfo`/`ContactInfo`/`ContactReplace` XML packet (`RadioInfo` is ignored — it carries the local op's own call) |
+| `packet_callsign()` | pull the worked call out of a `LookupInfo`/`ContactInfo`/`ContactReplace` XML packet (`RadioInfo`'s call is the local op's — ignored for the callsign) |
 | `packet_v4w()` | pull the callsign out of a VHFCtest4WIN `<V4W><QSOINLOG>` sharing packet (UDP 6767); empty `<CALLSIGN>` → `None` |
+| `packet_freq_mhz()` | operating frequency in MHz from `<rxfreq>`/`<txfreq>`/`<Freq>` (N1MM's *tens of Hz*, so ÷100000), any packet type; `None` if absent. `Callbooker` only — HF/VHF-only apps ignore it |
 | `v4w_listener_loop()` | second listener (VHF only — on by default in `VHFcallbook`, `vhfctest_share=no` to disable). Tries a normal UDP bind on 6767; VHFCtest4WIN holds that port with `SO_EXCLUSIVEADDRUSE`, so if it is already running the bind fails and it falls back to `_v4w_raw_listen` — a Windows `SIO_RCVALL` raw socket that needs the app run as admin. Feeds callsigns to `_on_v4w_call` → `_v4w_inbox` → `_poll_inbox` (same cross-thread hand-off as `_inbox`; never touches Tk off-thread) → `_handle_call` |
 | `normalize_call()` / `normalize_grid()` | sanitise the call; upper-case locators so a case-only difference isn't seen as a disagreement |
 | `_HttpPool` / `http_get()` | one kept-alive HTTPS connection per host, gzip, per-host lock, stale-connection retry, busy-host fallback to a one-shot connection. **All source fetches go through `http_get`.** |
@@ -97,7 +104,7 @@ collapsed token or a `name (Country) - zone` DX line lands on
 per size in `self._font_cache`. The canvas is `width=360` (was 330) to
 give the big font room.
 
-### Class attributes `VHFcallbookApp` overrides (base = HF behaviour)
+### Class attributes a subclass sets (base = HF behaviour)
 
 ```
 VERSION       # title-bar version — set on the subclass, NOT the module __version__
@@ -107,11 +114,15 @@ SLOT_SEP      # HF " " (name already has " - " after it);  VHF " - "
 SHOW_NAME     # HF True; VHF also True (name printed once, in front of the grids)
 DX_COUNTRY    # HF True (name -> "name (country)" for DX);  VHF False
 LOOKUP_CHAIN  # HF (qrzcq, hamqth); VHF adds qrzdb; qrz_lookup prepended by __init__ when creds exist
-VHFCTEST_CAPABLE  # base False; True on VHF — allows the 6767 feed (run() wires the 2nd listener)
+VHFCTEST_CAPABLE  # base False; True on VHF/Callbooker — allows the 6767 feed (run() wires the 2nd listener)
 ```
 
-`COLLAPSE_ON_AGREE` is `True` on the base `CallbookApp` now (both apps
-collapse a unanimous result), so `VHFcallbookApp` no longer overrides it.
+`VHFcallbookApp` sets these as class attributes. `CallbookerApp` writes
+the display four (`SLOT_FIELDS` / `SLOT_SEP` / `DX_COUNTRY` /
+`lookup_chain` + `source_labels`) as **instance** attributes at runtime in
+`_apply_mode` — Python resolves instance-first, so the same render code
+works unchanged. `COLLAPSE_ON_AGREE` is `True` on the base `CallbookApp`
+now (all apps collapse a unanimous result).
 
 ## Gotchas / history (don't reintroduce these bugs)
 
@@ -139,16 +150,18 @@ collapse a unanimous result), so `VHFcallbookApp` no longer overrides it.
 restored on start — position only, not size), `qrz_session.json` (QRZ XML
 session key). They live next to the `.cfg`/exe.
 
-**Never commit `callbook.cfg` / `VHFcallbook.cfg`** (nor the retired
-`n1mm_VHFcallbook.cfg` / `VHFctest4WinCallbook.cfg`, still gitignored) —
-they hold the QRZ login in plain text. Only `*.cfg.template`
-(placeholders) is tracked.
+**Never commit `Callbooker.cfg` / `callbook.cfg` / `VHFcallbook.cfg`**
+(nor the retired `n1mm_VHFcallbook.cfg` / `VHFctest4WinCallbook.cfg`,
+still gitignored) — they hold the QRZ login in plain text. Only
+`*.cfg.template` (placeholders) is tracked.
 
 ## Build
 
 ```bat
+python -m PyInstaller --onefile --windowed --name Callbooker --manifest manifest.xml --noconfirm Callbooker.py
 python -m PyInstaller --onefile --windowed --name n1mm_callbook --manifest manifest.xml --noconfirm n1mm_callbook.py
 python -m PyInstaller --onefile --windowed --name VHFcallbook --manifest manifest.xml --noconfirm VHFcallbook.py
+copy /Y dist\Callbooker.exe .
 copy /Y dist\n1mm_callbook.exe .
 copy /Y dist\VHFcallbook.exe .
 ```
@@ -162,10 +175,14 @@ only — no version bump, no release.
 Full ritual:
 
 1. Bump `__version__` in the changed app files + the `USER_AGENT` in
-   `n1mm_callbook.py`. HF `n1mm_callbook` (~2.x) and VHF `VHFcallbook`
-   (~1.x) carry independent numbers; a change to the shared engine
-   (`n1mm_callbook.py`) bumps both, even when the other app's behaviour is
-   unchanged. A change confined to one app file bumps only that app.
+   `n1mm_callbook.py`. `Callbooker` (~1.x), `n1mm_callbook` (~2.x) and
+   `VHFcallbook` (~1.x) carry independent numbers; a change to the shared
+   engine (`n1mm_callbook.py`) that alters existing behaviour bumps every
+   app, even ones whose own behaviour is unchanged. A purely **additive**
+   engine change used by only one app (e.g. `packet_freq_mhz` for
+   `Callbooker` v1.0) bumps just that app. A change confined to one app
+   file bumps only that app. The repo tag is `vX.Y` from a running
+   counter (currently tracking neither app's number since they diverged).
 2. README: version banner near the top + a new entry at the top of
    `## 7. Changelog`.
 3. Rebuild the affected EXEs, copy to repo root (`--noconfirm` also

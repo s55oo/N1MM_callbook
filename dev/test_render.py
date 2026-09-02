@@ -228,6 +228,40 @@ def main():
                 cb.packet_v4w(b"<contactinfo><call>S51A</call></contactinfo>"), None)
     ok &= check("v4w: junk -> None", cb.packet_v4w(b"not xml at all"), None)
 
+    # packet_freq_mhz: N1MM frequency fields are in tens of Hz (Callbooker)
+    ok &= check("freq: contactinfo rxfreq (144.3 MHz)",
+                cb.packet_freq_mhz(b"<contactinfo><band>144</band>"
+                                   b"<rxfreq>14430000</rxfreq><call>S50C</call>"
+                                   b"</contactinfo>"), 144.3)
+    ok &= check("freq: contactinfo 10m (28.074 MHz)",
+                cb.packet_freq_mhz(b"<contactinfo><rxfreq>2807400</rxfreq>"
+                                   b"<call>W1AW</call></contactinfo>"), 28.074)
+    ok &= check("freq: RadioInfo <Freq> (7.025 MHz)",
+                cb.packet_freq_mhz(b"<RadioInfo><Freq>702500</Freq>"
+                                   b"<OpCall>S55OO</OpCall></RadioInfo>"), 7.025)
+    ok &= check("freq: lookupinfo without a frequency -> None",
+                cb.packet_freq_mhz(b"<lookupinfo><call>DL1ABC</call>"
+                                   b"<mycall>S55OO</mycall></lookupinfo>"), None)
+    ok &= check("freq: junk -> None", cb.packet_freq_mhz(b"not xml"), None)
+
+    # Callbooker: the freq picks the HF vs VHF view, VHFCtest4WIN forces VHF
+    import Callbooker as ckr
+    cbk = ckr.CallbookerApp.__new__(ckr.CallbookerApp)
+    cbk._vhf_mode = False
+    cbk._qrz_fn = None
+    cbk._apply_mode(False, force=True)
+    ok &= check("Callbooker: HF view slot fields",
+                (cbk.SLOT_FIELDS, cbk.DX_COUNTRY,
+                 tuple(cb.source_label(f) for f in cbk.lookup_chain)),
+                (("state", "cqzone"), True, ("QRZCQ", "HamQTH")))
+    cbk._apply_mode(True)
+    ok &= check("Callbooker: VHF view slot fields + QRZ-web source added",
+                (cbk.SLOT_FIELDS, cbk.SLOT_SEP, cbk.DX_COUNTRY,
+                 tuple(cb.source_label(f) for f in cbk.lookup_chain)),
+                (("grid",), " - ", False, ("QRZCQ", "HamQTH", "QRZ web")))
+    ok &= check("Callbooker: >=30 MHz -> VHF", 144.3 >= ckr.VHF_ABOVE_MHZ, True)
+    ok &= check("Callbooker: <30 MHz -> HF", 28.074 >= ckr.VHF_ABOVE_MHZ, False)
+
     # raw IPv4 packet -> UDP payload (SIO_RCVALL fallback path)
     def ip_udp(dport, payload, sport=6767):
         import socket as _s

@@ -2,6 +2,7 @@ __pycache__/
 *.pyc
 callbook.cfg
 VHFcallbook.cfg
+Callbooker.cfg
 # legacy - kept so an old checkout's local config is still ignored
 n1mm_VHFcallbook.cfg
 VHFctest4WinCallbook.cfg

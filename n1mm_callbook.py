@@ -172,6 +172,35 @@ def packet_v4w(data):
     return None
 
 
+def packet_freq_mhz(data):
+    """Operating frequency in MHz from an N1MM broadcast packet, or None.
+
+    N1MM carries the frequency in ``<rxfreq>`` / ``<txfreq>`` (on
+    LookupInfo / ContactInfo) and ``<Freq>`` / ``<TXFreq>`` (on RadioInfo),
+    all in *tens of hertz* - e.g. ``14430000`` is 144.300 MHz. Only used by
+    the combined ``Callbooker`` app, to choose the HF vs VHF display; the
+    stand-alone HF and VHF apps ignore it.
+    """
+    raw = data.decode("utf-8", errors="replace")
+    start = raw.find("<")
+    if start < 0:
+        return None
+    try:
+        root = ET.fromstring(raw[start:])
+    except ET.ParseError:
+        return None
+    wanted = ("rxfreq", "txfreq", "freq")
+    for el in root.iter():
+        if el.tag.lower() in wanted and el.text and el.text.strip():
+            try:
+                tens_hz = float(el.text.strip())
+            except ValueError:
+                continue
+            if tens_hz > 0:
+                return tens_hz / 100000.0  # tens of Hz -> MHz
+    return None
+
+
 def normalize_call(call):
     if not call:
         return ""

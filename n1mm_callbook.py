@@ -1428,17 +1428,21 @@ class CallbookApp:
         return "/".join(parts)
 
     def _best_name(self, sources):
-        # The operator name, printed only once; out of the candidates from
-        # the sources that have answered so far the shortest one wins.
-        # Placeholder entries (QRZCQ fills unallocated calls with
-        # "Unknown OM") count as empty.
+        # The operator's first name, printed once. Out of the candidates
+        # from the sources that have answered so far the shortest wins,
+        # then only its first word is kept ("Goran Andric" -> "Goran",
+        # "ARRL HQ OPERATORS CLUB" -> "ARRL") - a contest exchange never
+        # wants the surname or a club's full title. Placeholder entries
+        # (QRZCQ fills unallocated calls with "Unknown OM") count as empty.
         names = []
         for s in sources:
             n = self._source_field(s, "name")
             a = n.lower()
             if a and not a.startswith(("unknown", "not found", "n/a", "na")):
                 names.append(n)
-        return min(names, key=len) if names else ""
+        if not names:
+            return ""
+        return min(names, key=len).split()[0]
 
     def _best_country(self, sources):
         # Country, printed once - the first source in chain order that

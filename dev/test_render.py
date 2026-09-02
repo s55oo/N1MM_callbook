@@ -98,6 +98,12 @@ def main():
 
     ok &= check("HF all agree -> state/zone collapses to one token",
                 r(hf, [US, US2, US]), "Fred - MA/5")
+    ok &= check("name -> first word only (no surname / club title)",
+                r(hf, [{"name": "Goran Andric", "state": "", "cqzone": "15",
+                        "country": "Slovenia"}] * 2), "Goran (Slovenia) - 15")
+    ok &= check("VHF name -> first word only",
+                r(vh, [{"grid": "JN76HD", "name": "David A Minster"}] * 3),
+                "David - JN76HD")
     ok &= check("HF all agree -> collapsed line uses the big font",
                 rsize(hf, [US, US2, US]), cb.FONT_SIZE_BIG)
     ok &= check("HF short disagreement (fits) -> big font, every slot shown",

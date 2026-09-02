@@ -111,7 +111,7 @@ VERSION       # title-bar version — set on the subclass, NOT the module __vers
 APP_TITLE
 SLOT_FIELDS   # HF ("state","cqzone");  VHF ("grid",)
 SLOT_SEP      # HF " " (name already has " - " after it);  VHF " - "
-SHOW_NAME     # HF True; VHF also True (name printed once, in front of the grids)
+SHOW_NAME     # HF True; VHF also True — _best_name picks the shortest candidate, then its first word only, printed once in front
 DX_COUNTRY    # HF True (name -> "name (country)" for DX);  VHF False
 LOOKUP_CHAIN  # the free sources (qrzcq, hamqth); a QRZ slot is prepended by __init__
 QRZ_WEB_FALLBACK  # base False (QRZ slot only with creds); True on VHF (public-page locator w/o login)

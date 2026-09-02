@@ -21,7 +21,7 @@ source answers, so nothing waits for the slowest one – and when the
 sources disagree the wrong one stands out and you can pick the right one.
 The window shows the worked station's **name**, then each source's
 **US state and CQ zone** as one `state/zone` token, and the **callsign**
-in the footer (name printed once as the shortest of the sources). When
+in the footer (the operator's **first name** only, printed once). When
 the sources **disagree** you see every token – `Fred - MA/5 MA/4 MA/5` –
 and pick the right one; when they **all agree** it collapses to a single
 `state/zone` in a **larger green font** – `Fred - MA/5` – a quick "you can
@@ -210,7 +210,7 @@ python VHFcallbook.py    [--port 12060] [--config VHFcallbook.cfg]
   biggest size that actually fits the window – the collapsed token, a
   `name (Country) - zone` DX line, and a short two-source disagreement all
   get the **big font**; a long side-by-side row steps down until it fits.
-- For a **US station** the main area shows the **shortest operator name**
+- For a **US station** the main area shows the operator's **first name**
   (printed once) followed by the **`state/zone`** token – one per source
   when they differ, a single one when they agree. A slot shows just the
   state when that source has no CQ zone (`MA`), just the zone for a
@@ -386,6 +386,10 @@ dev\bench_latency.py – lookup-latency benchmark
 > now. Older entries below that name the retired apps are historical; the
 > feature they describe lives in `VHFcallbook` today.
 
+- **v2.20 – name is the first name only.** The displayed name is trimmed
+  to its first word (`Goran Andric` → `Goran`, `ARRL HQ OPERATORS CLUB` →
+  `ARRL`) – a contest exchange never wants the surname or a club's full
+  title.
 - **v2.20 – QRZ is now one column.** The separate `QRZ XML` and `QRZ web`
   slots are merged: the paid XML API when your QRZ login works and the
   subscription is live, otherwise the public `/db/` page for the locator –

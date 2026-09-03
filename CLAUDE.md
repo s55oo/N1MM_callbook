@@ -232,6 +232,9 @@ docs / `dev/` / comment change is committed and pushed only.
   non-blocking `MqttPublisher`, schema-v1 `lookup_payload`, the three
   publish points, the per-lookup generation/context, and how the PR #2
   composite cache key was reconciled with LAN sharing's bare-call key.
+- `dev/lan-mqtt-session.md` — history/pointers for the 1.2–1.6 work
+  (LAN sharing, MQTT, the multi-homed broadcast bug, PR #2 reconciliation)
+  and the standing decisions from the user.
 - `dev/vhfctest4win-*.md`, `dev/sniff_multi.py`, `dev/test_rcvall2.py`,
   `dev/probe_window.py`, `dev/vhfctest4win-captures/` — the VHFCtest4WIN
   6767 reverse-engineering (protocol notes, sniff tools, packet captures).

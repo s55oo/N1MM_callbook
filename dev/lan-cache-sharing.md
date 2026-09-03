@@ -98,14 +98,14 @@ is:
 3. **After an HTTP resolve** → broadcast the **entry packet** (Tier 1
    live sharing, below).
 
-**Grace ≈ 30 ms.** On a wired LAN the wire RTT is sub-millisecond; the
+**Grace ≈ 50 ms.** On a wired LAN the wire RTT is sub-millisecond; the
 budget is a peer's thread wake-up + a dict lookup + the reply, single
-digit ms on a quiet gigabit segment. 30 ms is comfortable margin for a
-busy peer and jitter while staying imperceptible — and because the HTTP
-lookup is only *scheduled*, not blocked on, even a full grace-period miss
-adds nothing beyond those 30 ms. The reply path must not go through the
-100 ms `_poll_inbox` tick or that cadence, not the network, becomes the
-floor. If two peers both answer, the duplicate entry packets merge to a
+digit ms on a quiet gigabit segment. 50 ms is generous margin for a busy
+peer, Windows timer granularity and jitter while staying imperceptible —
+and because the HTTP lookup is only *scheduled*, not blocked on, even a
+full grace-period miss adds nothing beyond those 50 ms. The reply path
+must not go through the 100 ms `_poll_inbox` tick or that cadence, not the
+network, becomes the floor. If two peers both answer, the duplicate entry packets merge to a
 no-op.
 
 ### Live sharing (Tier 1)
@@ -195,7 +195,7 @@ the existing 12060 / 6767 listeners. Notes:
   `_poll_inbox` (same pattern as `_inbox` / `_v4w_inbox`), and a small
   send helper.
 - Wire into `n1mm_callbook.py`'s lookup path: in `_on_stable`, on a local
-  cache miss send a call-request and `root.after(~30, _start_lookup)`;
+  cache miss send a call-request and `root.after(~50, _start_lookup)`;
   an incoming entry packet for `self.current` renders and cancels that
   pending `after`. Broadcast an entry packet from `_poll_inbox` once the
   last slot lands after an HTTP resolve. Merge incoming entries through the

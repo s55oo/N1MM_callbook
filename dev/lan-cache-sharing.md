@@ -24,8 +24,26 @@ central server (would need a process to run and manage on one PC), no
 multicast (ham LANs are flat switches with hit-or-miss IGMP; broadcast is
 what we already trust).
 
-Config: `lan_share=yes` (on by default) and `lan_share_port=6768`,
-mirroring the `vhfctest_share` / `vhfctest_port` pattern.
+Config: `lan_share=yes` (on by default), `lan_share_port=6768`, and
+`lan_share_bcast=` (extra broadcast addresses), mirroring the
+`vhfctest_share` / `vhfctest_port` pattern.
+
+**Send targets** (`LANShare._broadcast_targets`): `255.255.255.255` plus
+each local interface's `<net>.255` (assuming /24), plus any
+`lan_share_bcast` extras, de-duplicated. The limited broadcast alone can
+egress the wrong adapter on a multi-homed PC — a VirtualBox host-only
+`192.168.56.1`, a Hyper-V switch, a VPN — so aiming at the real LAN's
+directed broadcast explicitly is the reliable path. Each datagram goes to
+every target; the sender's own loopback copies merge to no-ops.
+
+**Diagnostics** (temporary, 1.4–1.5): the title bar shows
+`LAN 6768 (N peers)` where `N = len(LANShare.peers)` (distinct non-local
+source IPs a valid `cbshare` packet arrived from); the footer tags each
+resolution `· online` / `· LAN 6768` / `· cache`; `dev/lan_probe.py`
+(`listen` / `send`) proves whether 6768 crosses the network without
+involving Callbooker. If `N` stays 0 it is almost always the Windows
+Firewall (inbound UDP 6768) or a Public network profile on the receiving
+PC.
 
 ### Why 6768 and not 12060
 

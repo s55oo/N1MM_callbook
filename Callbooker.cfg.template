@@ -35,6 +35,9 @@ cache_file=Callbooker_cache.json
 # networks. Uncomment to disable, or to move it to another port:
 # lan_share=no
 # lan_share_port=6768
+# The broadcast auto-targets 255.255.255.255 + each interface's <net>.255.
+# If your LAN is not a /24, add its broadcast address(es) here (comma-sep):
+# lan_share_bcast=10.0.0.255
 
 # Paid QRZ.com XML Callbook Data service - adds a slot to whichever view
 # is active. Requires an active QRZ XML subscription.

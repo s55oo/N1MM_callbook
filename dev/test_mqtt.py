@@ -379,6 +379,7 @@ def main():
     import Callbooker as ckr
     feed_app = ckr.CallbookerApp.__new__(ckr.CallbookerApp)
     feed_app.local = {"127.0.0.1"}
+    feed_app.lan = None
     feed_app._last_mhz = None
     feed_app._result_feed = None
     feed_app._result_frequency_mhz = None

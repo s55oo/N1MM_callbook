@@ -175,6 +175,11 @@ def lanshare_dispatch_tests():
         lan._handle(pkt(good), "10.0.0.9")
         ok &= check("entry packet -> on_entry(call, sources, ts)",
                     (got_entries[-1][0], got_entries[-1][1]), ("S55OO", TRIMMED))
+        ok &= check("valid packet from a non-local IP -> recorded as a peer",
+                    "10.0.0.9" in lan.peers, True)
+        lan._handle(pkt(good), "127.0.0.1")
+        ok &= check("packet from our own IP -> not counted as a peer",
+                    lan.peers, {"10.0.0.9"})
 
         got_entries.clear()
         lan._handle(pkt({**good, "cbshare": 999}), "10.0.0.9")
@@ -211,6 +216,15 @@ def lanshare_dispatch_tests():
         ok &= check("sync-request from a peer -> accepted for service",
                     lan._last_sync_served > 0, True)
         lan.close()
+
+        # broadcast targets: 255.255.255.255 always, plus each local /24
+        # directed broadcast, plus any explicit extras
+        t = cb.LANShare._broadcast_targets("192.168.5.255, 10.1.2.255")
+        ok &= check("targets include the limited broadcast",
+                    "255.255.255.255" in t, True)
+        ok &= check("targets include the explicit extras",
+                    "192.168.5.255" in t and "10.1.2.255" in t, True)
+        ok &= check("targets have no duplicates", len(t) == len(set(t)), True)
     finally:
         for f in (p, p + ".tmp"):
             try:

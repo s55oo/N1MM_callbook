@@ -1,6 +1,6 @@
 # Callbooker – contest callbook for HF and VHF
 
-> **Version:** 1.4 · Made by **S55OO** with AI assistance.
+> **Version:** 1.5 · Made by **S55OO** with AI assistance.
 > · **Public domain** – see [LICENSE](LICENSE).
 
 A compact always-on-top window that listens to your logger's UDP broadcast
@@ -151,6 +151,25 @@ network** and every other position gets it instantly.
   silently won't arrive.
 - It is isolated from the loggers' own 12060 network — see
   `dev/lan-cache-sharing.md` for why a dedicated port.
+
+**Is it working?** The title bar shows `LAN 6768 (N peers)` — `N` is how
+many *other* PCs' 6768 this one has heard from. If it stays `0`:
+
+1. **Windows Firewall** on the PC that shows `0` is blocking inbound
+   UDP 6768. Allow **Callbooker** for the **Private** network, or in an
+   elevated prompt:
+   `netsh advfirewall firewall add rule name="Callbooker 6768" dir=in action=allow protocol=UDP localport=6768`
+2. That PC's network is a **Public** profile — change it to **Private**.
+3. Multi-homed PC (VirtualBox / Hyper-V / VPN adapters): Callbooker aims
+   the broadcast at `255.255.255.255` **and** each interface's `<net>.255`.
+   If your LAN is not a `/24`, set `lan_share_bcast=10.0.0.255` (comma-sep
+   for several) in `Callbooker.cfg`.
+4. The two PCs are on **different subnets / VLANs**, or one is on guest
+   Wi-Fi with client isolation — broadcast does not cross those.
+
+To prove whether the datagrams cross the network at all (independent of
+Callbooker), run `python dev/lan_probe.py listen` on one PC and
+`python dev/lan_probe.py send` on the other.
 
 ---
 
@@ -403,8 +422,14 @@ dev/*.py, dev/*.md      – logger-feed / VHFCtest4WIN notes and sniff tools
 
 Callbooker replaces the earlier separate apps (`n1mm_callbook` for HF,
 `VHFcallbook` for VHF, and before that `n1mm_VHFcallbook` /
-`VHFctest4WinCallbook`). All of their features are in `Callbooker` 1.4.
+`VHFctest4WinCallbook`). All of their features are in `Callbooker` 1.5.
 
+- **1.5** – LAN cache sharing (6768) diagnostics: the title bar shows
+  `LAN 6768 (N peers)`; the broadcast now also targets each interface's
+  `<net>.255` (not only `255.255.255.255`, which can egress a VirtualBox
+  / VPN adapter on a multi-homed PC) with a `lan_share_bcast=` override;
+  `dev/lan_probe.py` is a standalone two-PC "does 6768 cross the network"
+  test. Temporary, alongside the 1.4 footer tag.
 - **1.4** – **temporary diagnostic:** the footer shows how each callsign
   resolved – `S55OO · online` (fetched now), `· LAN 6768` (a peer
   answered), or `· cache` (already local) – for watching LAN cache

@@ -48,7 +48,7 @@ without it. PyInstaller is only needed to build the EXE. Public domain
 | `packet_callsign()` | pull the worked call out of a `LookupInfo`/`ContactInfo`/`ContactReplace` XML packet (`RadioInfo`'s call is the local op's — ignored for the callsign). DXLog.net's "N1MM format" broadcast sends a byte-compatible `<lookupinfo>` on 12060 (on Space/Tab, pre-log, `<txfreq>` in tens of Hz) — parses with no change |
 | `packet_v4w()` | pull the callsign out of a VHFCtest4WIN `<V4W><QSOINLOG>` sharing packet (UDP 6767); empty `<CALLSIGN>` → `None` |
 | `packet_freq_mhz()` | operating frequency in MHz from `<rxfreq>`/`<txfreq>`/`<Freq>` (N1MM's *tens of Hz*, so ÷100000), any packet type; `None` if absent. Callbooker's HF/VHF switch |
-| `LANShare` | LAN cache sharing on a dedicated UDP port (default 6768, `lan_share=no` to disable). One JSON packet type with a `cbshare` marker: entry / call-request / sync-request. On a local cache miss `_on_stable` broadcasts a call-request and waits `LAN_GRACE_MS` (50 ms) before the HTTP lookup; a peer's entry cancels it. Only `_CACHE_FIELDS` on the wire — never a QRZ login. `dev/lan-cache-sharing.md` |
+| `LANShare` | LAN cache sharing on a dedicated UDP port (default 6768, `lan_share=no` to disable). One JSON packet type with a `cbshare` marker: entry / call-request / sync-request. On a local cache miss `_on_stable` broadcasts a call-request and waits `LAN_GRACE_MS` (50 ms) before the HTTP lookup; a peer's entry cancels it. Only `_CACHE_FIELDS` on the wire — never a QRZ login. `_send` targets `255.255.255.255` **and** each interface's `<net>.255` (`_broadcast_targets`, plus `lan_share_bcast` extras) so a multi-homed PC doesn't only broadcast out a VirtualBox/VPN adapter. `self.peers` = non-local IPs a valid packet arrived from (shown as `(N peers)` in the title). `dev/lan-cache-sharing.md` |
 | `Cache.merge()` / `put()`→ts / `get_with_ts()` / `items_since()` | the cache hooks `LANShare` uses — newer-wins merge of a received entry, the `ts` to gossip, and the newest-first replay list for a sync |
 | `v4w_listener_loop()` | the 6767 listener (Callbooker, on unless `vhfctest_share=no`). Tries a normal UDP bind; VHFCtest4WIN holds 6767 with `SO_EXCLUSIVEADDRUSE`, so if it is already running the bind fails and it falls back to `_v4w_raw_listen` — a Windows `SIO_RCVALL` raw socket that needs the app run as admin. Feeds callsigns to `_on_v4w_call` → `_v4w_inbox` → `_poll_inbox` (drained on the GUI thread) → `_handle_call` |
 | `normalize_call()` / `normalize_grid()` | sanitise the call; upper-case locators so a case-only difference isn't seen as a disagreement |
@@ -148,12 +148,16 @@ unchanged.
 - **Cache key is the bare call** — LAN sharing depends on it. The HF↔VHF
   slot-count mismatch is handled by `_cached_sources` rejecting a
   wrong-length entry, *not* by a composite key.
-- **`_SHOW_SOURCE_TAG` is a TEMPORARY diagnostic** (added 1.4): the footer
-  gets `· online` / `· LAN 6768` / `· cache` via `_show_source()`, called
-  from `_on_stable`, `_drain_lan_inbox`, `_poll_inbox` and `_show_call`.
-  To remove: set the flag `False`, or delete `_show_source`, `_source_tag`,
-  its four callers, and the tag-restore line in the `_poll_inbox` MQTT
-  clear branch. `test_lan_share` / `test_mqtt` assert the tag text.
+- **TEMPORARY LAN-sharing diagnostics** (1.4–1.5), all to be removed once
+  the multi-op is confirmed working:
+  - `_SHOW_SOURCE_TAG` flag → footer `· online` / `· LAN 6768` / `· cache`
+    via `_show_source()` (called from `_on_stable`, `_drain_lan_inbox`,
+    `_poll_inbox`, `_show_call`; plus a tag-restore line in the
+    `_poll_inbox` MQTT-clear branch).
+  - `LANShare.peers` + `CallbookerApp` title `LAN 6768 (N peers)` (the
+    `_lan_peer_count` block in `CallbookerApp._poll_inbox`, the peer bit
+    in `_build`).
+  `test_lan_share` / `test_mqtt` assert both.
 - **`self.VERSION`, not module `__version__`.** `_build` reads
   `self.VERSION`; `CallbookerApp` sets it from its own `__version__`.
 - **Bump `CACHE_SCHEMA`** only when an old entry would now display *wrong*
@@ -220,7 +224,9 @@ docs / `dev/` / comment change is committed and pushed only.
 - `dev/test_mqtt.py` — MQTT config parsing, schema-v1 `lookup_payload`,
   and the publish integration points (fake Paho client + fake cache, no
   broker). Has a Tk-less engine-import shim for CI.
-- `dev/lan_wire.py` — real-UDP two-socket LAN-sharing smoke test.
+- `dev/lan_wire.py` — real-UDP two-socket LAN-sharing smoke test (one PC).
+- `dev/lan_probe.py` — real-UDP **two-PC** diagnostic: `listen` on one,
+  `send` on the other; isolates firewall/network from Callbooker.
 - `dev/bench_latency.py` — per-source and end-to-end lookup latency
   (reads QRZ creds from `Callbooker.cfg` if present).
 - `dev/logger-feeds.md` — every logger feed (N1MM, DXLog.net,

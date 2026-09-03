@@ -16,7 +16,7 @@ the paid XML service when credentials are configured, else its public
 Made by S55OO with AI assistance.
 """
 
-__version__ = "1.4"
+__version__ = "1.5"
 
 import argparse
 import base64
@@ -39,7 +39,7 @@ import xml.etree.ElementTree as ET
 
 from mqtt_client import MqttPublisher, lookup_payload
 
-USER_AGENT = "Mozilla/5.0 Callbooker/1.4"
+USER_AGENT = "Mozilla/5.0 Callbooker/1.5"
 HAMQTH_UA = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
     "(KHTML, like Gecko) Chrome/126.0 Safari/537.36"
@@ -677,16 +677,37 @@ class LANShare:
     feeds.
     """
 
-    def __init__(self, port, cache, on_entry, local_ips):
+    def __init__(self, port, cache, on_entry, local_ips, bcast=""):
         self.port = port
         self.cache = cache
         self.on_entry = on_entry
         self.local = set(local_ips)
         self.stop = threading.Event()
         self._sock = None
+        self._targets = self._broadcast_targets(bcast)
+        self.peers = set()  # non-local IPs we've had a valid cbshare packet from
         self._last_sync_served = 0.0
         self._own_sync_ts = 0.0
         self._thread = threading.Thread(target=self._listen, daemon=True)
+
+    @staticmethod
+    def _broadcast_targets(extra=None):
+        """255.255.255.255 plus each local interface's /24 directed
+        broadcast. The limited broadcast alone can egress the wrong
+        adapter on a multi-homed PC (VirtualBox / Hyper-V / a VPN), so we
+        also aim at the real LAN's <net>.255 explicitly. `extra` overrides
+        from `lan_share_bcast` in the .cfg for an unusual netmask."""
+        targets = ["255.255.255.255"]
+        for ip in local_interfaces():
+            parts = ip.split(".")
+            if len(parts) == 4 and all(p.isdigit() for p in parts):
+                directed = ".".join(parts[:3]) + ".255"
+                if directed not in targets:
+                    targets.append(directed)
+        for addr in (extra or "").replace(",", " ").split():
+            if addr and addr not in targets:
+                targets.append(addr)
+        return targets
 
     def start(self):
         """Bind the port and start listening. Returns False if the port
@@ -715,10 +736,11 @@ class LANShare:
             data = json.dumps(obj, ensure_ascii=False).encode("utf-8")
         except (TypeError, ValueError):
             return
-        try:
-            self._sock.sendto(data, ("255.255.255.255", self.port))
-        except OSError:
-            pass
+        for addr in self._targets:
+            try:
+                self._sock.sendto(data, (addr, self.port))
+            except OSError:
+                pass
 
     def broadcast_entry(self, call, sources, ts):
         self._send({
@@ -761,6 +783,8 @@ class LANShare:
             return
         if not isinstance(msg, dict) or msg.get("cbshare") != LAN_PROTO:
             return
+        if src and src not in self.local:
+            self.peers.add(src)  # a real peer's 6768 reaches us
         req = msg.get("req")
         if req == "call":
             self._serve_call(msg)
@@ -1201,6 +1225,10 @@ def run(app_class, config_name, cache_name, description, always_vhfctest=False):
         "no", "false", "0", "off",
     ):
         lan_share_port = as_int("lan_share_port", LAN_SHARE_PORT)
+    # Extra broadcast address(es) for LAN sharing, if the auto-detected
+    # 255.255.255.255 + <iface>/24 targets miss (an unusual netmask, or a
+    # segment the sender's interface list doesn't cover).
+    lan_share_bcast = settings.get("lan_share_bcast", "")
 
     # Side files live next to the cache: the remembered window position /
     # view and the QRZ XML session key.
@@ -1223,6 +1251,7 @@ def run(app_class, config_name, cache_name, description, always_vhfctest=False):
         lan_share_port,
         settings,
         os.path.dirname(os.path.abspath(args.config)),
+        lan_share_bcast,
     )
     root.mainloop()
 
@@ -1268,11 +1297,12 @@ class CallbookApp:
     def __init__(self, root, cache_path, port, cache_days, qrz_username="",
                  qrz_password="", win_file=None, cache_persist=True,
                  vhfctest_port=0, selftest_call="", lan_share_port=0,
-                 mqtt_settings=None, config_dir=""):
+                 mqtt_settings=None, config_dir="", lan_share_bcast=""):
         self.root = root
         self.port = port
         self.vhfctest_port = vhfctest_port
         self.lan_share_port = lan_share_port
+        self.lan_share_bcast = lan_share_bcast
         self.cache = Cache(cache_path, cache_days, cache_persist)
         self.win_file = win_file
         self.current = None
@@ -1338,7 +1368,7 @@ class CallbookApp:
         if self.lan_share_port:
             lan = LANShare(
                 self.lan_share_port, self.cache, self._queue_lan_entry,
-                self.local,
+                self.local, self.lan_share_bcast,
             )
             if lan.start():
                 self.lan = lan

@@ -183,7 +183,8 @@ docs / `dev/` / comment change is committed and pushed only.
   WriteLog to-do lives here.
 - `dev/lan-cache-sharing.md` — design-locked (not built) UDP-gossip cache
   sharing between Callbooker instances on a LAN: dedicated port 6768 (why
-  not 12060), one packet type, live broadcast + startup "replay as
+  not 12060), one entry packet + two request lines, ask-the-LAN-before-
+  the-callbook-servers lookup order, live broadcast + startup "replay as
   gossip" catch-up, storm guards, firewall behaviour.
 - `dev/vhfctest4win-*.md`, `dev/sniff_multi.py`, `dev/test_rcvall2.py`,
   `dev/probe_window.py`, `dev/vhfctest4win-captures/` — the VHFCtest4WIN

@@ -225,6 +225,11 @@ docs / `dev/` / comment change is committed and pushed only.
   request lines, ask-the-LAN-before-the-callbook-sites lookup order,
   live broadcast + startup "replay as gossip" catch-up, storm guards,
   firewall behaviour, and an "as built" code map.
+- `dev/mqtt-integration.md` — MQTT output (`mqtt_client.py`, shipped in
+  1.3, off by default): the optional/bundled paho dependency, the
+  non-blocking `MqttPublisher`, schema-v1 `lookup_payload`, the three
+  publish points, the per-lookup generation/context, and how the PR #2
+  composite cache key was reconciled with LAN sharing's bare-call key.
 - `dev/vhfctest4win-*.md`, `dev/sniff_multi.py`, `dev/test_rcvall2.py`,
   `dev/probe_window.py`, `dev/vhfctest4win-captures/` — the VHFCtest4WIN
   6767 reverse-engineering (protocol notes, sniff tools, packet captures).

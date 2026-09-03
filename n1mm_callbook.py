@@ -16,7 +16,7 @@ the paid XML service when credentials are configured, else its public
 Made by S55OO with AI assistance.
 """
 
-__version__ = "1.2"
+__version__ = "1.3"
 
 import argparse
 import base64
@@ -37,7 +37,9 @@ import tkinter.font as tkfont
 import urllib.parse
 import xml.etree.ElementTree as ET
 
-USER_AGENT = "Mozilla/5.0 Callbooker/1.2"
+from mqtt_client import MqttPublisher, lookup_payload
+
+USER_AGENT = "Mozilla/5.0 Callbooker/1.3"
 HAMQTH_UA = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
     "(KHTML, like Gecko) Chrome/126.0 Safari/537.36"
@@ -1213,6 +1215,8 @@ def run(app_class, config_name, cache_name, description, always_vhfctest=False):
         vhfctest_port,
         selftest_call,
         lan_share_port,
+        settings,
+        os.path.dirname(os.path.abspath(args.config)),
     )
     root.mainloop()
 
@@ -1257,7 +1261,8 @@ class CallbookApp:
 
     def __init__(self, root, cache_path, port, cache_days, qrz_username="",
                  qrz_password="", win_file=None, cache_persist=True,
-                 vhfctest_port=0, selftest_call="", lan_share_port=0):
+                 vhfctest_port=0, selftest_call="", lan_share_port=0,
+                 mqtt_settings=None, config_dir=""):
         self.root = root
         self.port = port
         self.vhfctest_port = vhfctest_port
@@ -1266,6 +1271,13 @@ class CallbookApp:
         self.win_file = win_file
         self.current = None
         self._debounce = None
+        # Per-lookup generation counter + captured context (mode / feed /
+        # frequency / source layout). Overlapping async lookups are told
+        # apart by generation so a slow stale result cannot repaint or be
+        # published against a newer callsign. Read by the MQTT publish path.
+        self._lookup_generation = 0
+        self._active_lookup_generation = 0
+        self._active_lookup_context = None
         # QRZ takes slot 0 (shown left-most): the paid XML API when
         # credentials are set, else the public /db/ page (locator only) if
         # QRZ_WEB_FALLBACK is on for this app. All sources are queried in
@@ -1296,6 +1308,7 @@ class CallbookApp:
         # HTTP lookup); a matching entry clears it and skips the lookup.
         self._lan_inbox = []
         self._await_lan = None
+        self._await_lan_ctx = None
         # Start-up self-test (see _start_precheck). Empty call = disabled.
         self._selftest_call = normalize_call(selftest_call)
         self._precheck = None       # per source: None = pending, (status, ms)
@@ -1305,6 +1318,10 @@ class CallbookApp:
         self._slots = None
         self._pending_inds = set()
         self._font_cache = {}  # size -> tkfont.Font, for width measurement
+        # Optional MQTT output: one JSON document per completed lookup (see
+        # mqtt_client.py). Off unless mqtt_enabled=yes; needs paho-mqtt.
+        self.mqtt = MqttPublisher(mqtt_settings or {}, config_dir)
+        self._mqtt_error_seen = ""
         self.local = set(local_interfaces())
         self.local.add("127.0.0.1")
         # Optional LAN cache-sharing feed on its own UDP port (started
@@ -1321,6 +1338,7 @@ class CallbookApp:
                 lan.request_sync()  # ask peers to replay their caches
         self._build()
         self._restore_window()
+        self.mqtt.start()  # background network loop; a no-op when disabled
         self.stop = threading.Event()
         self.thread = threading.Thread(
             target=listener_loop,
@@ -1462,7 +1480,7 @@ class CallbookApp:
         cur = self.current
         if not merged_any or cur is None:
             return
-        cached = self.cache.get(cur)
+        cached = self._cached_sources(cur)
         if cached is None:
             return
         awaiting = self._await_lan == cur
@@ -1476,6 +1494,31 @@ class CallbookApp:
             self._await_lan = None
             self._slots = None
             self._render_slots(cur, list(cached), set())
+            if awaiting:
+                # A peer answered instead of the websites - to an MQTT
+                # consumer this is a cache hit.
+                self._publish_lookup_result(
+                    cur, list(cached), cached=True,
+                    context=self._await_lan_ctx or self._capture_lookup_context(),
+                )
+
+    def _cached_sources(self, call):
+        # Cache lookup, keyed by the bare call so LAN peers share entries
+        # regardless of view. An entry whose source count no longer matches
+        # the active lookup chain (HF <-> VHF changes whether QRZ has a
+        # slot) would be mislabelled, so treat it as a miss and re-fetch.
+        sources = self.cache.get(call)
+        if sources is not None and len(sources) != len(self.lookup_chain):
+            return None
+        return sources
+
+    def _capture_lookup_context(self):
+        return {
+            "mode": "vhf" if self.SLOT_FIELDS == ("grid",) else "hf",
+            "feed": getattr(self, "_result_feed", None),
+            "frequency_mhz": getattr(self, "_result_frequency_mhz", None),
+            "source_labels": tuple(self.source_labels),
+        }
 
     def _handle_call(self, call):
         # Shared path for a worked callsign from any feed (the N1MM
@@ -1483,6 +1526,9 @@ class CallbookApp:
         call = normalize_call(call)
         if not call or call.lower().startswith("test"):
             return
+        self._lookup_generation += 1
+        generation = self._lookup_generation
+        context = self._capture_lookup_context()
         self._precheck_active = False  # a real callsign supersedes the self-test
         # Show the callsign immediately (it may change as the user types),
         # but debounce the network lookup until it has been stable a moment.
@@ -1492,42 +1538,51 @@ class CallbookApp:
             self._show_call(call)
         if self._debounce is not None:
             self.root.after_cancel(self._debounce)
-        self._debounce = self.root.after(300, self._on_stable, call)
+        self._debounce = self.root.after(
+            300, self._on_stable, call, generation, context
+        )
 
-    def _on_stable(self, call):
+    def _on_stable(self, call, generation, context):
         self._debounce = None
         self._await_lan = None
-        if call != self.current:
+        if call != self.current or generation != self._lookup_generation:
             return
-        sources = self.cache.get(call)
+        sources = self._cached_sources(call)
         if sources is not None:
             self._slots = None
             self._render_slots(call, list(sources), set())
+            self._publish_lookup_result(
+                call, list(sources), cached=True, context=context
+            )
         elif self.lan is not None:
             # Ask the LAN first: broadcast a call-request and give a peer a
             # short grace to answer before falling through to the callbook
             # websites. A matching entry (handled in _drain_lan_inbox)
             # clears _await_lan, so _lan_grace_expired then does nothing.
             self._await_lan = call
+            self._await_lan_ctx = context
             self.lan.request_call(call)
-            self.root.after(LAN_GRACE_MS, self._lan_grace_expired, call)
+            self.root.after(
+                LAN_GRACE_MS, self._lan_grace_expired, call, generation, context
+            )
         else:
-            self._start_lookup(call)
+            self._start_lookup(call, generation, context)
 
-    def _lan_grace_expired(self, call):
-        if self._await_lan != call or call != self.current:
+    def _lan_grace_expired(self, call, generation, context):
+        if (self._await_lan != call or call != self.current
+                or generation != self._lookup_generation):
             return  # superseded, or a peer already answered
         # Fold in anything that just arrived; if it answers `call` this
-        # clears _await_lan and paints the result.
+        # clears _await_lan and paints (and publishes) the result.
         self._drain_lan_inbox()
         if self._await_lan != call or call != self.current:
             return  # a peer answered inside the grace window
         self._await_lan = None
-        self._start_lookup(call)
+        self._start_lookup(call, generation, context)
 
     def _show_call(self, call):
         self.call_label.configure(text=call)
-        sources = self.cache.get(call)
+        sources = self._cached_sources(call)
         if sources is not None:
             self._slots = None
             self._render_slots(call, list(sources), set())
@@ -1536,17 +1591,19 @@ class CallbookApp:
             self.canvas.configure(bg=COLOR_ACTIVE)
             self.canvas.itemconfigure(self.main_id, text="…")
 
-    def _start_lookup(self, call):
+    def _start_lookup(self, call, generation, context):
         # No "already fetching" guard: if the operator retypes the call
         # while a lookup is in flight, we just start a fresh one. The old
         # threads still finish but their results are dropped by the
-        # `call != self.current` check in _poll_inbox.
+        # generation / `call != self.current` checks in _poll_inbox.
         self._slots = [None] * len(self.lookup_chain)
         self._pending_inds = set(range(len(self.lookup_chain)))
+        self._active_lookup_generation = generation
+        self._active_lookup_context = context
         self._render_slots(call, self._slots, self._pending_inds)
-        self._do_lookup(call)
+        self._do_lookup(call, generation, tuple(self.lookup_chain))
 
-    def _do_lookup(self, call):
+    def _do_lookup(self, call, generation, lookup_chain):
         # Fires every source at once (one thread each) so a slow source
         # never holds up a fast one; returns immediately. Each result is
         # posted to the GUI the moment that source answers; the slot index
@@ -1558,10 +1615,44 @@ class CallbookApp:
                 res = fn(call)
             except Exception:
                 res = None
-            self._inbox.append((call, i, res))
+            self._inbox.append((call, generation, i, res))
 
-        for i, fn in enumerate(self.lookup_chain):
+        for i, fn in enumerate(lookup_chain):
             threading.Thread(target=run, args=(i, fn), daemon=True).start()
+
+    def _publish_lookup_result(self, call, sources, cached, context):
+        """Publish a stable, source-preserving record after lookup completes."""
+        if not self.mqtt.enabled:
+            return
+        try:
+            labels = list(context["source_labels"])
+            normalized_sources = []
+            values = []
+            for source in sources:
+                value = self._source_value(source) if source else ""
+                values.append(value or None)
+                result = None
+                if source is not None:
+                    result = {
+                        key: self._source_field(source, key)
+                        for key in ("name", "grid", "state", "cqzone", "country")
+                    }
+                normalized_sources.append(result)
+            payload = lookup_payload(
+                call=call,
+                mode=context["mode"],
+                feed=context["feed"],
+                frequency_mhz=context["frequency_mhz"],
+                cached=cached,
+                name=self._best_name([s for s in sources if s]),
+                source_labels=labels,
+                sources=normalized_sources,
+                values=values,
+            )
+            self.mqtt.publish(payload)
+        except Exception:
+            # MQTT must never interfere with the contest lookup UI.
+            pass
 
     def _start_precheck(self):
         # One-off start-up probe: query every source once for the self-test
@@ -1665,6 +1756,14 @@ class CallbookApp:
             msg, self._v4w_status = self._v4w_status, None
             if not self.current:  # don't clobber a lookup already on screen
                 self.call_label.configure(text=msg)
+        mqtt_error = self.mqtt.error
+        if mqtt_error and mqtt_error != self._mqtt_error_seen:
+            self._mqtt_error_seen = mqtt_error
+            prefix = "{} · ".format(self.current) if self.current else ""
+            self.call_label.configure(text=prefix + mqtt_error)
+        elif not mqtt_error and self._mqtt_error_seen:
+            self._mqtt_error_seen = ""
+            self.call_label.configure(text=self.current or "MQTT connected")
         if self._precheck_inbox:
             while self._precheck_inbox:
                 i, status, ms = self._precheck_inbox.pop(0)
@@ -1677,8 +1776,10 @@ class CallbookApp:
                 self.root.after(PRECHECK_HOLD_MS, self._finish_precheck)
         try:
             while self._inbox:
-                call, i, res = self._inbox.pop(0)
-                if call != self.current:
+                call, generation, i, res = self._inbox.pop(0)
+                if (call != self.current
+                        or generation != self._lookup_generation
+                        or generation != self._active_lookup_generation):
                     continue
                 if self._slots is None or i >= len(self._slots):
                     continue
@@ -1692,6 +1793,12 @@ class CallbookApp:
                             self.lan.broadcast_entry(
                                 call, list(self._slots), ts
                             )
+                    # Publish even a partial result (a failed source is a
+                    # null entry) - the MQTT consumer wants what was shown.
+                    self._publish_lookup_result(
+                        call, list(self._slots), cached=False,
+                        context=self._active_lookup_context,
+                    )
                 self._render_slots(call, self._slots, self._pending_inds)
         except Exception:
             pass
@@ -1860,5 +1967,6 @@ class CallbookApp:
         self.cache.flush(force=True)
         if self.lan is not None:
             self.lan.close()
+        self.mqtt.close()
         self.stop.set()
         self.root.destroy()

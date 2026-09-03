@@ -12,6 +12,7 @@ import sys
 import tempfile
 import time
 import tkinter as tk
+import types
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import n1mm_callbook as cb  # noqa: E402
@@ -31,11 +32,14 @@ def check(label, got, want):
 
 
 class FakeCanvas:
+    text = None
+
     def configure(self, **kw):
         pass
 
     def itemconfigure(self, *a, **kw):
-        self.text = kw.get("text", getattr(self, "text", None))
+        if "text" in kw:
+            self.text = kw["text"]
 
     def coords(self, *a):
         pass
@@ -222,18 +226,26 @@ def lookup_order_tests():
         app.current = "S55OO"
         app._debounce = None
         app._await_lan = None
+        app._await_lan_ctx = None
         app._lan_inbox = []
         app._slots = None
         app._pending_inds = set()
+        app._lookup_generation = 5
+        app._active_lookup_generation = 0
+        app._active_lookup_context = None
+        app.mqtt = types.SimpleNamespace(enabled=False)
         app.SLOT_FIELDS = ("state", "cqzone")
         app.SLOT_SEP = " "
+        app.source_labels = ("QRZCQ", "HamQTH")
         app.lookup_chain = (cb.qrzcq_lookup, cb.hamqth_lookup)
 
         started = []
-        app._start_lookup = lambda call: started.append(call)
+        app._start_lookup = lambda call, gen, ctx: started.append(call)
+        GEN, CTX = 5, {"mode": "hf", "feed": "n1mm", "frequency_mhz": 14.2,
+                       "source_labels": ("QRZCQ", "HamQTH")}
 
         # cache miss -> ask the LAN, schedule the grace, do NOT fetch yet
-        app._on_stable("S55OO")
+        app._on_stable("S55OO", GEN, CTX)
         ok &= check("cache miss -> call-request sent", app.lan.requested, ["S55OO"])
         ok &= check("cache miss -> no HTTP lookup during the grace", started, [])
         ok &= check("cache miss -> grace timer scheduled at LAN_GRACE_MS",
@@ -242,7 +254,8 @@ def lookup_order_tests():
         ok &= check("cache miss -> _await_lan armed", app._await_lan, "S55OO")
 
         # a peer answers within the grace -> merged and rendered, no fetch
-        app._queue_lan_entry("S55OO", TRIMMED, time.time())
+        # (two sources, matching the 2-entry lookup_chain)
+        app._queue_lan_entry("S55OO", TRIMMED + TRIMMED, time.time())
         app.root.fire("_lan_grace_expired")
         ok &= check("peer answered -> _await_lan cleared", app._await_lan, None)
         ok &= check("peer answered -> HTTP lookup skipped", started, [])
@@ -253,7 +266,8 @@ def lookup_order_tests():
         app.root.afters.clear()
         app.current = "K1TTT"
         app._await_lan = None
-        app._on_stable("K1TTT")
+        app._lookup_generation = 6
+        app._on_stable("K1TTT", 6, CTX)
         app.root.fire("_lan_grace_expired")
         ok &= check("no peer -> falls through to _start_lookup", started, ["K1TTT"])
     finally:

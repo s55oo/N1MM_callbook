@@ -34,8 +34,12 @@ agree the row collapses to one larger green token.
   lookup orchestration), `run()` (entry point), the source functions,
   `_HttpPool`, `Cache`. Its class-attribute defaults are the **HF view**.
 
-Pure Python standard library — no third-party runtime dependencies.
-PyInstaller is only needed to build the EXE. Public domain (Unlicense).
+The lookup, cache, LAN-sharing and UI code is pure Python standard
+library. The **optional** MQTT output (`mqtt_client.py`, off unless
+`mqtt_enabled=yes`) needs `paho-mqtt` — listed in `requirements.txt`,
+bundled into `Callbooker.exe`, imported lazily so the app still runs
+without it. PyInstaller is only needed to build the EXE. Public domain
+(Unlicense).
 
 ## Architecture (all in `n1mm_callbook.py` unless noted)
 
@@ -49,7 +53,8 @@ PyInstaller is only needed to build the EXE. Public domain (Unlicense).
 | `v4w_listener_loop()` | the 6767 listener (Callbooker, on unless `vhfctest_share=no`). Tries a normal UDP bind; VHFCtest4WIN holds 6767 with `SO_EXCLUSIVEADDRUSE`, so if it is already running the bind fails and it falls back to `_v4w_raw_listen` — a Windows `SIO_RCVALL` raw socket that needs the app run as admin. Feeds callsigns to `_on_v4w_call` → `_v4w_inbox` → `_poll_inbox` (drained on the GUI thread) → `_handle_call` |
 | `normalize_call()` / `normalize_grid()` | sanitise the call; upper-case locators so a case-only difference isn't seen as a disagreement |
 | `_HttpPool` / `http_get()` | one kept-alive HTTPS connection per host, gzip, per-host lock, stale-connection retry, busy-host fallback to a one-shot connection. **All source fetches go through `http_get`.** |
-| `Cache` | JSON cache keyed by call. `put()` only marks dirty; `flush()` (driven from `_poll_inbox`, forced in `on_close`) writes at most once per `FLUSH_INTERVAL`. Stores only `_CACHE_FIELDS`. Prunes expired / wrong-`CACHE_SCHEMA` entries on load. `persist=False` (`cache_persist=no`) = in-memory only. |
+| `Cache` | JSON cache keyed by the **bare call** (so LAN peers share entries regardless of view). `put()` only marks dirty; `flush()` (driven from `_poll_inbox`, forced in `on_close`) writes at most once per `FLUSH_INTERVAL`. Stores only `_CACHE_FIELDS`. Prunes expired / wrong-`CACHE_SCHEMA` entries on load. `persist=False` (`cache_persist=no`) = in-memory only. `_cached_sources(call)` on the app rejects an entry whose source count ≠ the active lookup chain (HF↔VHF changes whether QRZ has a slot) so it isn't mislabelled. |
+| `mqtt_client.MqttPublisher` / `lookup_payload()` | **optional** MQTT output (`mqtt_client.py`, needs `paho-mqtt`). Long-lived reconnecting Paho client with its own network thread, bounded offline queue, optional auth/TLS. `_publish_lookup_result` builds a schema-v1 JSON doc (Tk-free `lookup_payload`) after every completed lookup — a cache hit in `_on_stable`, a LAN-answered hit in `_drain_lan_inbox`, the final live source in `_poll_inbox` — and hands it to `MqttPublisher.publish` (returns fast; never blocks the UI). Off unless `mqtt_enabled=yes`. Errors surface in the footer. |
 | `qrzcq_lookup` / `hamqth_lookup` / `qrz_lookup` | the sources. Each returns a dict with the same keys (`name qth grid class state cqzone country`) or `None`. **`qrz_lookup` is one source**: `_qrz_xml_lookup` (paid XML API, needs creds + a live subscription) when it can, else `_qrz_web_lookup` (grid from `cs_lat`/`cs_lon` on the public `/db/` page, no login) — never both. It sets module `_QRZ_TIER` (`"xml"`/`"web"`) and `_QRZ_SUBEXP`, read by the self-test. |
 | `qrz_session_load()` / `_qrz_session_save()` | persist the QRZ XML session key to `qrz_session.json` so a restart skips the ~0.6 s re-login |
 | `load_config()` / `run()` | entry point — parse args + the `key=value` .cfg, build `CallbookerApp`, run the Tk loop. `run(..., always_vhfctest=<bool>)` — Callbooker computes it from `vhfctest_share` (default yes) and forces the 6767 listener on when true |
@@ -57,15 +62,21 @@ PyInstaller is only needed to build the EXE. Public domain (Unlicense).
 
 ### Lookup flow
 
-`on_packet` → debounce 300 ms → `_on_stable` → **local cache hit** renders
-immediately. Else, with LAN sharing on: broadcast a call-request, arm
-`_await_lan`, schedule `_lan_grace_expired` 50 ms out — a peer's entry
-merges into the cache and renders (lookup skipped); no peer →
-`_start_lookup`. `_start_lookup` → `_do_lookup` spawns **one thread per
-source** → each posts `(call, slot_index, result_or_None)` to `self._inbox`
-→ `_poll_inbox` (GUI thread, every 100 ms) drains it (and `_lan_inbox`),
-drops results whose call != `self.current`, renders each slot as it lands,
-caches once every slot is in — then `lan.broadcast_entry` shares it.
+`on_packet` → `_handle_call` bumps `_lookup_generation` and snapshots
+`_capture_lookup_context()` (mode / feed / frequency / source labels) →
+debounce 300 ms → `_on_stable(call, generation, context)` → **local cache
+hit** renders + publishes (`cached=True`). Else, with LAN sharing on:
+broadcast a call-request, arm `_await_lan`, schedule `_lan_grace_expired`
+50 ms out — a peer's entry merges into the cache, renders and publishes
+(lookup skipped); no peer → `_start_lookup(call, generation, context)`.
+`_start_lookup` → `_do_lookup` spawns **one thread per source** → each
+posts `(call, generation, slot_index, result_or_None)` to `self._inbox` →
+`_poll_inbox` (GUI thread, every 100 ms) drains it (and `_lan_inbox`),
+drops results whose call ≠ `self.current` **or generation ≠ the active
+lookup** (a slow stale thread can't repaint or publish a newer callsign),
+renders each slot as it lands, and once every slot is in: caches +
+`lan.broadcast_entry` (full success only) and `_publish_lookup_result`
+(`cached=False`, any completion).
 
 ### Start-up self-test
 
@@ -123,7 +134,20 @@ unchanged.
 - **No `_fetching` guard.** An earlier version skipped a new lookup while
   one was "in flight"; retyping a call mid-lookup then wedged all future
   lookups. `_start_lookup` always starts fresh; stale results are dropped
-  by the `call != self.current` check.
+  by the `call != self.current` **and generation** checks.
+- **`_lookup_generation` threads through everything.** `_handle_call`
+  bumps it and every downstream call (`_on_stable`, `_lan_grace_expired`,
+  `_start_lookup`, `_do_lookup`, the `_inbox` tuple) carries it. A result
+  whose generation ≠ the current one is dropped — this is what stops a
+  slow stale source from repainting *or MQTT-publishing* against a newer
+  callsign. If you add a new path into the lookup, carry the generation.
+- **MQTT must never block.** `_publish_lookup_result` is wrapped in a bare
+  `except`, and `MqttPublisher.publish` returns immediately (Paho owns the
+  network thread; offline results go to a bounded queue). Don't add a
+  synchronous broker call on the GUI thread.
+- **Cache key is the bare call** — LAN sharing depends on it. The HF↔VHF
+  slot-count mismatch is handled by `_cached_sources` rejecting a
+  wrong-length entry, *not* by a composite key.
 - **`self.VERSION`, not module `__version__`.** `_build` reads
   `self.VERSION`; `CallbookerApp` sets it from its own `__version__`.
 - **Bump `CACHE_SCHEMA`** only when an old entry would now display *wrong*
@@ -151,12 +175,15 @@ plain text. Only `Callbooker.cfg.template` (placeholder) is tracked.
 ## Build
 
 ```bat
-python -m PyInstaller --onefile --windowed --name Callbooker --manifest manifest.xml --noconfirm Callbooker.py
+python -m pip install -r requirements.txt
+python -m PyInstaller --onefile --windowed --name Callbooker --manifest manifest.xml --hidden-import paho.mqtt.client --noconfirm Callbooker.py
 copy /Y dist\Callbooker.exe .
 ```
 
-`--noconfirm` also rewrites `Callbooker.spec` (unchanged content — leave
-it).
+`--hidden-import paho.mqtt.client` bundles the MQTT dependency (its import
+in `mqtt_client.py` is lazy, so PyInstaller needs the hint). `--noconfirm`
+rewrites `Callbooker.spec`, which now carries the manifest and that hidden
+import — so `python -m PyInstaller Callbooker.spec` reproduces the build.
 
 ## Release ritual
 
@@ -184,6 +211,10 @@ docs / `dev/` / comment change is committed and pushed only.
 - `dev/test_lan_share.py` — headless LAN cache-sharing tests (no sockets):
   `Cache` helpers, `LANShare._handle` packet dispatch, and the LAN-first
   lookup order via a fake Tk root / canvas.
+- `dev/test_mqtt.py` — MQTT config parsing, schema-v1 `lookup_payload`,
+  and the publish integration points (fake Paho client + fake cache, no
+  broker). Has a Tk-less engine-import shim for CI.
+- `dev/lan_wire.py` — real-UDP two-socket LAN-sharing smoke test.
 - `dev/bench_latency.py` — per-source and end-to-end lookup latency
   (reads QRZ creds from `Callbooker.cfg` if present).
 - `dev/logger-feeds.md` — every logger feed (N1MM, DXLog.net,
@@ -199,4 +230,4 @@ docs / `dev/` / comment change is committed and pushed only.
   6767 reverse-engineering (protocol notes, sniff tools, packet captures).
 
 Run: `python dev/test_render.py` / `python dev/test_lan_share.py` /
-`python dev/bench_latency.py`.
+`python dev/test_mqtt.py` / `python dev/bench_latency.py`.

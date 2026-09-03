@@ -221,7 +221,11 @@ All in `n1mm_callbook.py` unless noted.
   `LAN_SYNC_CAP` entries, newest first), otherwise an entry packet →
   `_recv_entry` → `on_entry` (schema/ts validated).
 - **`Cache`** gained `put()` returning the stored `ts`, `merge()`
-  (newer-wins, returns stored?), `get_with_ts()`, `items_since()`.
+  (newer-wins, returns whether it stored), `get_with_ts()`,
+  `items_since()`. Keys stay the **bare call** so peers share entries
+  regardless of HF/VHF view or per-PC QRZ-credential differences; the
+  app's `_cached_sources()` rejects an entry whose source count no longer
+  matches the active lookup chain (re-fetch) rather than keying by mode.
 - **`CallbookApp`**: `self.lan` (LANShare or None), `self._lan_inbox`
   (listener-thread → GUI hand-off list, like `_v4w_inbox`),
   `self._await_lan` (callsign with an outstanding call-request).

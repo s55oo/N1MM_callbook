@@ -1,6 +1,6 @@
 # Callbooker – contest callbook for HF and VHF
 
-> **Version:** 1.2 · Made by **S55OO** with AI assistance.
+> **Version:** 1.3 · Made by **S55OO** with AI assistance.
 > · **Public domain** – see [LICENSE](LICENSE).
 
 A compact always-on-top window that listens to your logger's UDP broadcast
@@ -223,6 +223,72 @@ frequency and remembers the last one between runs.
 - The `.exe` does **not** embed the `.cfg`; it reads it from disk at run
   time, so shipping the EXE never leaks your password.
 
+### MQTT output (optional)
+
+Callbooker can publish one JSON document after each completed lookup,
+including cache hits. MQTT runs on its own network thread, reconnects in
+the background, and **never blocks the lookup window** when the broker is
+unavailable (results are held in a bounded offline queue). It is **off by
+default**. Add this to `Callbooker.cfg` to enable it:
+
+```ini
+mqtt_enabled=yes
+mqtt_server=192.168.1.10
+mqtt_tls=yes
+mqtt_port=8883
+mqtt_topic=callbooker/results
+# mqtt_qos may be 0, 1, or 2
+mqtt_qos=1
+mqtt_retain=no
+# Blank client ID = random callbooker-XXXXXXXX each run
+# mqtt_client_id=
+# mqtt_username=
+# mqtt_password=
+# mqtt_password_env=CALLBOOKER_MQTT_PASSWORD
+```
+
+- **TLS** (`mqtt_tls=yes`) defaults to port 8883. `mqtt_ca_certs` may
+  point to a custom CA file (relative paths resolve next to the config
+  file); blank uses the OS CA store. `mqtt_tls_insecure=yes` disables
+  certificate verification – diagnostic use only.
+- Username/password **without** TLS sends credentials unencrypted, so use
+  `mqtt_tls=yes` outside a trusted LAN. Prefer `mqtt_password_env` (names
+  an environment variable) over a plaintext `mqtt_password`; either way it
+  lives only in the gitignored local config, like the QRZ login.
+- The publish topic is fixed and must not contain `+` or `#`.
+- A blank/omitted `mqtt_client_id` uses a random `callbooker-XXXXXXXX`
+  each launch so multiple stations don't collide; set it only if the
+  broker needs a stable identity.
+- Tuning (defaults): `mqtt_keepalive=60`, `mqtt_queue_max=100` (max
+  1000), `mqtt_reconnect_min=1`, `mqtt_reconnect_max=30`.
+- **From source**, install the dependency: `pip install -r
+  requirements.txt`. The Windows `Callbooker.exe` already bundles it.
+- Broker errors show in the footer beside the current callsign and clear
+  on reconnect.
+
+Each payload is **schema version 1**: `callsign`, `mode`, `feed`,
+`frequency_mhz`, `cached`, a normalized `summary`, and the ordered
+`sources` array (each with its source name, display value, and result
+fields `name` / `grid` / `state` / `cqzone` / `country`; a failed source
+has a `null` result). For N1MM the frequency is from the packet or the
+last `RadioInfo`; it is `null` for VHFCtest4WIN.
+
+```json
+{
+  "schema_version": 1,
+  "published_at": "2026-09-02T18:30:00Z",
+  "callsign": "S55OO",
+  "mode": "vhf",
+  "feed": "vhfctest4win",
+  "frequency_mhz": null,
+  "cached": false,
+  "summary": {"name": "Goran", "values": ["JN76HD"], "agreement": false, "selected_value": null},
+  "sources": [
+    {"source": "QRZCQ", "value": "JN76HD", "result": {"name": "Goran", "grid": "JN76HD", "state": "", "cqzone": "15", "country": "Slovenia"}}
+  ]
+}
+```
+
 ---
 
 ## 4. Behavior
@@ -288,13 +354,17 @@ frequency and remembers the last one between runs.
 
 ## 5. Building the standalone EXE (for PCs without Python)
 
-Requires Python + PyInstaller:
+Requires Python + PyInstaller + the runtime dependency (`paho-mqtt`, for
+the optional MQTT output – bundled into the EXE):
 
 ```bat
-python -m pip install pyinstaller
-python -m PyInstaller --onefile --windowed --name Callbooker --manifest manifest.xml Callbooker.py
+python -m pip install -r requirements.txt pyinstaller
+python -m PyInstaller --onefile --windowed --name Callbooker --manifest manifest.xml --hidden-import paho.mqtt.client Callbooker.py
 copy /Y dist\Callbooker.exe Callbooker.exe
 ```
+
+(or just `python -m PyInstaller Callbooker.spec` – the spec already
+carries the `--manifest` and `--hidden-import`.)
 
 `manifest.xml` makes the window use modern common controls. The result is
 a single standalone EXE (no Python required) – copy it to the other
@@ -310,6 +380,8 @@ Callbooker.exe          – standalone executable (built, no Python needed)
 Callbooker.cfg.template – config template (copy to Callbooker.cfg, drop .template)
 Callbooker.cfg          – live config (gitignored; holds the QRZ login in plain text)
 n1mm_callbook.py        – the engine: CallbookApp window, run(), the source functions
+mqtt_client.py          – optional reconnecting MQTT publisher (paho-mqtt)
+requirements.txt        – Python runtime dependency (paho-mqtt)
 Callbooker.spec         – PyInstaller build settings
 manifest.xml            – PyInstaller manifest (common controls)
 Callbooker_cache.json   – local lookup cache          (auto-created, gitignored)
@@ -320,6 +392,7 @@ CLAUDE.md               – developer notes (architecture, gotchas, release step
 docs/*.png              – screenshots used in this README
 dev/test_render.py      – headless display-logic tests (no network)
 dev/test_lan_share.py   – headless LAN cache-sharing tests (no sockets)
+dev/test_mqtt.py        – MQTT config/payload tests (no broker required)
 dev/bench_latency.py    – lookup-latency benchmark
 dev/*.py, dev/*.md      – logger-feed / VHFCtest4WIN notes and sniff tools
 ```
@@ -330,8 +403,16 @@ dev/*.py, dev/*.md      – logger-feed / VHFCtest4WIN notes and sniff tools
 
 Callbooker replaces the earlier separate apps (`n1mm_callbook` for HF,
 `VHFcallbook` for VHF, and before that `n1mm_VHFcallbook` /
-`VHFctest4WinCallbook`). All of their features are in `Callbooker` 1.2.
+`VHFctest4WinCallbook`). All of their features are in `Callbooker` 1.3.
 
+- **1.3** – optional **MQTT output**: one schema-versioned JSON document
+  published after every completed lookup (cache hits included), with
+  configurable broker, topic, QoS, retain, authentication, TLS, reconnect
+  timing and a bounded offline queue. It runs on its own network thread
+  and never blocks the lookup window; broker errors show in the footer.
+  Off by default (`mqtt_enabled=yes` to turn on). `paho-mqtt` is bundled
+  into `Callbooker.exe`; from source, `pip install -r requirements.txt`.
+  Contributed by S53ZO.
 - **1.2** – **LAN cache sharing** (UDP 6768, on by default). Every
   Callbooker on the LAN shares the callsigns it resolves, so in a
   multi-op each call is fetched from QRZ / QRZCQ / HamQTH **once for the

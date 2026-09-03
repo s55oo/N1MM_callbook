@@ -109,6 +109,18 @@ walks `FONT_LADDER` (26 … 12) and returns the first size whose
 `winfo_reqwidth` before) — `Font`s cached in `self._font_cache`; canvas is
 `width=360` to give `FONT_SIZE_BIG` room.
 
+### Footer info line (`call_label`)
+
+Shows the worked call, plus ` · <source>` once the lookup resolves:
+`local` (cache hit — `_show_call` / `_on_stable`), `LAN` (a peer answered —
+`_drain_lan_inbox`), `online` (fresh fetch — `_poll_inbox` on the tick
+that fills the last slot). `_set_resolved_from(src)` records it in
+`self._resolved_from` (reset per call in `_show_call`) and repaints via
+`_footer_text()`, **unless** `_mqtt_error_seen` is set — an MQTT error
+owns the footer while it lasts, then `_poll_inbox` restores `_footer_text()`
+on clear. The start-up self-test summary and the VHFCtest4WIN status hint
+also transiently use this label.
+
 ### Class attributes (`CallbookApp` default = HF view; `CallbookerApp` changes them)
 
 ```

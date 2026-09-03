@@ -51,6 +51,14 @@ class FakeCanvas:
         return 362
 
 
+class FakeLabel:
+    text = None
+
+    def configure(self, **kw):
+        if "text" in kw:
+            self.text = kw["text"]
+
+
 class FakeRoot:
     def __init__(self):
         self.afters = []  # (ms, fn, args)
@@ -232,10 +240,13 @@ def lookup_order_tests():
         app._font_cache = {}
         app.cache = cb.Cache(p, 30, False)
         app.lan = FakeLan(app.cache)
+        app.call_label = FakeLabel()
         app.current = "S55OO"
         app._debounce = None
         app._await_lan = None
         app._await_lan_ctx = None
+        app._mqtt_error_seen = ""
+        app._resolved_from = None
         app._lan_inbox = []
         app._slots = None
         app._pending_inds = set()
@@ -270,6 +281,8 @@ def lookup_order_tests():
         ok &= check("peer answered -> HTTP lookup skipped", started, [])
         ok &= check("peer answered -> result on screen", app.canvas.text,
                     "Fred - MA/5")
+        ok &= check("peer answered -> info line tagged 'LAN'",
+                    app.call_label.text, "S55OO · LAN")
 
         # no peer answers -> grace falls through to the HTTP lookup
         app.root.afters.clear()

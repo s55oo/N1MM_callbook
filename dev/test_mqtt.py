@@ -277,6 +277,13 @@ def main():
         def flush(self, force=False):
             pass
 
+    class FakeLabel:
+        def __init__(self):
+            self.texts = []
+
+        def configure(self, **kwargs):
+            self.texts.append(kwargs.get("text"))
+
     context = {
         "mode": "vhf", "feed": "vhfctest4win", "frequency_mhz": None,
         "source_labels": ("QRZ", "QRZCQ"),
@@ -290,6 +297,9 @@ def main():
     cached_app._await_lan = None
     cached_app._await_lan_ctx = None
     cached_app.lan = None
+    cached_app.call_label = FakeLabel()
+    cached_app._mqtt_error_seen = ""
+    cached_app._resolved_from = None
     cached_renders = []
     cached_publishes = []
     cached_app._render_slots = lambda *args: cached_renders.append(args)
@@ -300,6 +310,10 @@ def main():
         len(cached_publishes) == 1
         and cached_publishes[0][1] == {"cached": True, "context": context}
         and cached_app.cache.get_keys == ["S55OO"],
+    )
+    ok &= check(
+        "cache hit -> info line tagged 'local'",
+        cached_app.call_label.texts[-1] == "S55OO · local",
     )
 
     live_app = cb.CallbookApp.__new__(cb.CallbookApp)
@@ -322,6 +336,8 @@ def main():
     live_app.lan = None
     live_app.mqtt = types.SimpleNamespace(error="")
     live_app._mqtt_error_seen = ""
+    live_app._resolved_from = None
+    live_app.call_label = FakeLabel()
     live_app.cache = FakeCache()
     live_app.stop = threading.Event()
     live_app.stop.set()
@@ -341,13 +357,6 @@ def main():
         live_app.cache.puts[0][0] == "S55OO",
     )
 
-    class FakeLabel:
-        def __init__(self):
-            self.texts = []
-
-        def configure(self, **kwargs):
-            self.texts.append(kwargs.get("text"))
-
     live_app.call_label = FakeLabel()
     live_app.mqtt.error = "MQTT publish failed: test"
     live_app._poll_inbox()
@@ -359,8 +368,8 @@ def main():
     live_app.mqtt.error = ""
     live_app._poll_inbox()
     ok &= check(
-        "footer recovers after MQTT error clears",
-        live_app.call_label.texts[-1] == "S55OO"
+        "footer recovers to the info line after MQTT error clears",
+        live_app.call_label.texts[-1] == "S55OO · online"
         and live_app._mqtt_error_seen == "",
     )
 

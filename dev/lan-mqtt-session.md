@@ -24,6 +24,7 @@ Where the 1.2–1.6 work was done, for `claude --resume`. The design and
 | **1.4** | `c3c9599` | Temporary footer tag `· online` / `· LAN 6768` / `· cache` |
 | **1.5** | `6056eb1` | Multi-homed broadcast fix + `(N peers)` title + `dev/lan_probe.py` |
 | **1.6** | `8293afa` | Removed the 1.4/1.5 temp diagnostics; kept the broadcast fix + probe |
+| **1.7** | | Footer **info line** made permanent: `<call> · local / LAN / online` (`_set_resolved_from` / `_footer_text`), on the user's request |
 
 ## The multi-homed broadcast bug (1.5)
 

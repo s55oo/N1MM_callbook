@@ -16,7 +16,7 @@ the paid XML service when credentials are configured, else its public
 Made by S55OO with AI assistance.
 """
 
-__version__ = "1.6"
+__version__ = "1.7"
 
 import argparse
 import base64
@@ -39,7 +39,7 @@ import xml.etree.ElementTree as ET
 
 from mqtt_client import MqttPublisher, lookup_payload
 
-USER_AGENT = "Mozilla/5.0 Callbooker/1.6"
+USER_AGENT = "Mozilla/5.0 Callbooker/1.7"
 HAMQTH_UA = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
     "(KHTML, like Gecko) Chrome/126.0 Safari/537.36"
@@ -1336,6 +1336,11 @@ class CallbookApp:
         self._lan_inbox = []
         self._await_lan = None
         self._await_lan_ctx = None
+        # The footer info line shows the worked callsign and, once the
+        # lookup resolves, where its data came from: "local" (this PC's
+        # cache), "LAN" (a peer over 6768), or "online" (a fresh
+        # QRZ/QRZCQ/HamQTH fetch). Reset per callsign in _show_call.
+        self._resolved_from = None
         # Start-up self-test (see _start_precheck). Empty call = disabled.
         self._selftest_call = normalize_call(selftest_call)
         self._precheck = None       # per source: None = pending, (status, ms)
@@ -1521,6 +1526,7 @@ class CallbookApp:
             self._await_lan = None
             self._slots = None
             self._render_slots(cur, list(cached), set())
+            self._set_resolved_from("LAN")
             if awaiting:
                 # A peer answered instead of the websites - to an MQTT
                 # consumer this is a cache hit.
@@ -1546,6 +1552,22 @@ class CallbookApp:
             "frequency_mhz": getattr(self, "_result_frequency_mhz", None),
             "source_labels": tuple(self.source_labels),
         }
+
+    def _footer_text(self):
+        # The info-line text: the worked call, plus " · <source>" once the
+        # lookup has resolved (see _resolved_from).
+        if not self.current:
+            return ""
+        if self._resolved_from:
+            return "{} · {}".format(self.current, self._resolved_from)
+        return self.current
+
+    def _set_resolved_from(self, source):
+        # Record how the current lookup resolved and refresh the info line
+        # (unless an MQTT error is currently occupying the footer).
+        self._resolved_from = source
+        if self.current and not self._mqtt_error_seen:
+            self.call_label.configure(text=self._footer_text())
 
     def _handle_call(self, call):
         # Shared path for a worked callsign from any feed (the N1MM
@@ -1578,6 +1600,7 @@ class CallbookApp:
         if sources is not None:
             self._slots = None
             self._render_slots(call, list(sources), set())
+            self._set_resolved_from("local")
             self._publish_lookup_result(
                 call, list(sources), cached=True, context=context
             )
@@ -1608,11 +1631,13 @@ class CallbookApp:
         self._start_lookup(call, generation, context)
 
     def _show_call(self, call):
+        self._resolved_from = None  # new callsign - info line back to bare
         self.call_label.configure(text=call)
         sources = self._cached_sources(call)
         if sources is not None:
             self._slots = None
             self._render_slots(call, list(sources), set())
+            self._set_resolved_from("local")
         else:
             # cleared visually while waiting for the debounce / lookup
             self.canvas.configure(bg=COLOR_ACTIVE)
@@ -1790,7 +1815,9 @@ class CallbookApp:
             self.call_label.configure(text=prefix + mqtt_error)
         elif not mqtt_error and self._mqtt_error_seen:
             self._mqtt_error_seen = ""
-            self.call_label.configure(text=self.current or "MQTT connected")
+            self.call_label.configure(
+                text=self._footer_text() or "MQTT connected"
+            )
         if self._precheck_inbox:
             while self._precheck_inbox:
                 i, status, ms = self._precheck_inbox.pop(0)
@@ -1826,6 +1853,7 @@ class CallbookApp:
                         call, list(self._slots), cached=False,
                         context=self._active_lookup_context,
                     )
+                    self._set_resolved_from("online")
                 self._render_slots(call, self._slots, self._pending_inds)
         except Exception:
             pass

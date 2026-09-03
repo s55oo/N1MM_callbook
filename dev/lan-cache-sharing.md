@@ -36,13 +36,16 @@ egress the wrong adapter on a multi-homed PC — a VirtualBox host-only
 directed broadcast explicitly is the reliable path. Each datagram goes to
 every target; the sender's own loopback copies merge to no-ops.
 
+**Seeing where a lookup resolved:** the footer info line shows
+`<call> · local` / `· LAN` / `· online` (permanent since 1.7 —
+`_set_resolved_from`; the 1.4/1.5 version was temporary and briefly
+carried a `(N peers)` title too, dropped in 1.6).
+
 **Troubleshooting a multi-op that isn't sharing:** `dev/lan_probe.py`
 (`listen` on one PC, `send` on the other) proves whether 6768 datagrams
 cross the network at all, independent of Callbooker. When they don't, it
 is almost always the receiving PC's Windows Firewall (inbound UDP 6768
-blocked) or its network being a Public profile. 1.4/1.5 also carried a
-footer resolution tag and a `(N peers)` title count — removed in 1.6 once
-sharing was confirmed working; `git log` has them if ever useful again.
+blocked) or its network being a Public profile.
 
 ### Why 6768 and not 12060
 

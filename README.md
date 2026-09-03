@@ -1,6 +1,6 @@
 # Callbooker – contest callbook for HF and VHF
 
-> **Version:** 1.6 · Made by **S55OO** with AI assistance.
+> **Version:** 1.7 · Made by **S55OO** with AI assistance.
 > · **Public domain** – see [LICENSE](LICENSE).
 
 A compact always-on-top window that listens to your logger's UDP broadcast
@@ -317,6 +317,10 @@ last `RadioInfo`; it is `null` for VHFCtest4WIN.
   parallel** and **each slot fills the moment that source answers** – `…`
   marks a slot still running. You might see `FRED - MA/5 … …` first, then
   the rest fill in.
+- **The footer is an info line:** it shows the worked callsign and, once
+  the lookup resolves, where the data came from – `K1KI · local` (already
+  in this PC's cache), `K1KI · LAN` (a peer answered over 6768), or
+  `K1KI · online` (a fresh QRZ / QRZCQ / HamQTH fetch).
 - **When every source that answered agrees**, the text turns light green
   **and the repeated token collapses to one** – `FRED - MA/5 MA/5 MA/5`
   shows as **`FRED - MA/5`**. A disagreement (`FRED - MA/5 MA/4 MA/5`), or
@@ -421,15 +425,19 @@ dev/*.py, dev/*.md      – logger-feed / VHFCtest4WIN notes and sniff tools
 
 Callbooker replaces the earlier separate apps (`n1mm_callbook` for HF,
 `VHFcallbook` for VHF, and before that `n1mm_VHFcallbook` /
-`VHFctest4WinCallbook`). All of their features are in `Callbooker` 1.6.
+`VHFctest4WinCallbook`). All of their features are in `Callbooker` 1.7.
 
+- **1.7** – the footer is now a permanent **info line**: the worked
+  callsign plus where its data came from once the lookup resolves –
+  `· local` (this PC's cache), `· LAN` (a peer over 6768), or `· online`
+  (a fresh fetch). (The 1.4/1.5 version of this was temporary; it's back
+  for good, cleaned up.)
 - **1.6** – removed the temporary LAN-sharing diagnostics from 1.4/1.5
-  (the footer source tag and the `(N peers)` title) now that multi-op
-  cache sharing is confirmed working. **Kept:** the multi-homed broadcast
-  fix – the 6768 broadcast targets each interface's `<net>.255` as well
-  as `255.255.255.255`, with a `lan_share_bcast=` override – and
-  `dev/lan_probe.py`, the standalone two-PC "does 6768 cross the network"
-  test.
+  (the footer source tag and the `(N peers)` title). **Kept:** the
+  multi-homed broadcast fix – the 6768 broadcast targets each interface's
+  `<net>.255` as well as `255.255.255.255`, with a `lan_share_bcast=`
+  override – and `dev/lan_probe.py`, the standalone two-PC "does 6768
+  cross the network" test.
 - **1.3** – optional **MQTT output**: one schema-versioned JSON document
   published after every completed lookup (cache hits included), with
   configurable broker, topic, QoS, retain, authentication, TLS, reconnect

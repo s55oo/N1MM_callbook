@@ -57,9 +57,20 @@ topmost Tkinter window with a colored canvas and a help icon.
      type a callsign and press **Space** (moving to the exchange field).
      This is the primary trigger.
    - **Contacts** – sends a `ContactInfo` packet when a QSO is logged.
-2. Set the **IP:Port** to your PC's address (or the subnet broadcast) and
-   port **12060**.
+2. Set the **IP:Port** and port **12060**. Use **`127.0.0.1:12060`** when
+   Callbooker runs on the same PC – it keeps working whatever network you
+   are on. To reach Callbooker on *other* PCs as well, give a
+   **comma-separated list, no spaces**, of each network's subnet-broadcast
+   address, e.g.
+   `127.0.0.1:12060,192.168.1.255:12060,10.147.17.255:12060` (wired LAN
+   plus a ZeroTier/VPN range); N1MM sends to every address in the list.
 3. Make sure **Broadcast Data is enabled** on the transmitting computer.
+
+**Callsign never reaches Callbooker after moving the PC to another
+network?** The broadcast address in step 2 is almost always still pointing
+at the old subnet – a subnet-broadcast like `192.168.178.255` is silently
+dropped once that subnet is gone. Keep `127.0.0.1:12060` in the list and a
+same-PC setup survives every network change.
 
 Callbooker listens on all interfaces and picks the worked callsign out of
 the `LookupInfo` / `ContactInfo` packet. It ignores the local operator's

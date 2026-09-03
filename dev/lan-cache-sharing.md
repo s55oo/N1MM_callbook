@@ -165,22 +165,3 @@ the existing 12060 / 6767 listeners. Notes:
   logic and the responder rate/cap logic exercised headless, no sockets.
 - This is a **user-facing change** → full release ritual when it ships
   (see `CLAUDE.md`).
-
-## Alternatives considered
-
-- **Shared append-only JSONL on an SMB share** (`shared_cache=\\PC\...`):
-  each instance appends one line per resolved call, everyone tails and
-  merges. Least code, no new port, no firewall prompt — but needs a
-  writable share to exist and makes one PC the implicit host. A good
-  fallback / complement; the gossip design was chosen to keep "same app,
-  nothing extra to deploy".
-- **Central cache server**: a process to run and manage on one PC; breaks
-  "nothing extra to install".
-- **Multicast**: cleaner than broadcast in theory, unreliable on ham LAN
-  gear (IGMP support varies); broadcast is already trusted for 6767/12060.
-- **Pull-based HTTP micro-server per instance** (`GET /cache/<call>`):
-  easy to debug, clean request/response, but more moving parts than plain
-  broadcast and still needs discovery + the firewall allow.
-- **Pre-seed the cache**: warm-up pass over expected calls (last year's
-  log, `master.dta`) distributed as a `Callbooker_cache.json`. Pure ops,
-  zero code — a complement to LAN sharing, not a replacement.

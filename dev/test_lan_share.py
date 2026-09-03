@@ -69,14 +69,6 @@ class FakeRoot:
                 fn(*args)
 
 
-class FakeLabel:
-    text = None
-
-    def configure(self, **kw):
-        if "text" in kw:
-            self.text = kw["text"]
-
-
 class FakeLan:
     def __init__(self, cache):
         self.cache = cache
@@ -175,11 +167,6 @@ def lanshare_dispatch_tests():
         lan._handle(pkt(good), "10.0.0.9")
         ok &= check("entry packet -> on_entry(call, sources, ts)",
                     (got_entries[-1][0], got_entries[-1][1]), ("S55OO", TRIMMED))
-        ok &= check("valid packet from a non-local IP -> recorded as a peer",
-                    "10.0.0.9" in lan.peers, True)
-        lan._handle(pkt(good), "127.0.0.1")
-        ok &= check("packet from our own IP -> not counted as a peer",
-                    lan.peers, {"10.0.0.9"})
 
         got_entries.clear()
         lan._handle(pkt({**good, "cbshare": 999}), "10.0.0.9")
@@ -245,13 +232,10 @@ def lookup_order_tests():
         app._font_cache = {}
         app.cache = cb.Cache(p, 30, False)
         app.lan = FakeLan(app.cache)
-        app.call_label = FakeLabel()
         app.current = "S55OO"
         app._debounce = None
         app._await_lan = None
         app._await_lan_ctx = None
-        app._mqtt_error_seen = ""
-        app._source_tag = None
         app._lan_inbox = []
         app._slots = None
         app._pending_inds = set()
@@ -286,8 +270,6 @@ def lookup_order_tests():
         ok &= check("peer answered -> HTTP lookup skipped", started, [])
         ok &= check("peer answered -> result on screen", app.canvas.text,
                     "Fred - MA/5")
-        ok &= check("peer answered -> footer tagged 'LAN 6768' (temp diag)",
-                    app.call_label.text, "S55OO · LAN 6768")
 
         # no peer answers -> grace falls through to the HTTP lookup
         app.root.afters.clear()

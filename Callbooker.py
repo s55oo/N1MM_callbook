@@ -32,13 +32,13 @@ the rest get it instantly. See ``dev/lan-cache-sharing.md``.
 
 Made by S55OO with AI assistance.
 
-Version: 1.5
+Version: 1.6
 
 Usage:
     python Callbooker.py [--port 12060] [--config Callbooker.cfg]
 """
 
-__version__ = "1.5"
+__version__ = "1.6"
 
 import ctypes
 import functools
@@ -208,13 +208,6 @@ class CallbookerApp(cb.CallbookApp):
             self._apply_mode(True)
             self._result_feed = "vhfctest4win"
             self._result_frequency_mhz = None
-        # TEMPORARY: keep the LAN peer count in the title so it is obvious
-        # whether 6768 reaches the other PC(s).
-        if self.lan is not None:
-            n = len(self.lan.peers)
-            if n != getattr(self, "_lan_peer_count", None):
-                self._lan_peer_count = n
-                self._build()
         super()._poll_inbox()
 
     # -- window / remembered view ----------------------------------------
@@ -249,11 +242,7 @@ class CallbookerApp(cb.CallbookApp):
         super()._build()
         extra = "  +  UDP {}".format(self.vhfctest_port) if self.vhfctest_port else ""
         if getattr(self, "lan", None) is not None:
-            # TEMPORARY: " (N peers)" — how many other PCs' 6768 we've heard.
-            peers = getattr(self, "_lan_peer_count", 0)
-            extra += "  +  LAN {} ({} peer{})".format(
-                self.lan_share_port, peers, "" if peers == 1 else "s"
-            )
+            extra += "  +  LAN {}".format(self.lan_share_port)
         self.root.title(
             "{}  -  UDP {}{}  auto HF/VHF  v{}".format(
                 self.APP_TITLE, self.port, extra, self.VERSION

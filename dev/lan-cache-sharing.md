@@ -36,14 +36,13 @@ egress the wrong adapter on a multi-homed PC — a VirtualBox host-only
 directed broadcast explicitly is the reliable path. Each datagram goes to
 every target; the sender's own loopback copies merge to no-ops.
 
-**Diagnostics** (temporary, 1.4–1.5): the title bar shows
-`LAN 6768 (N peers)` where `N = len(LANShare.peers)` (distinct non-local
-source IPs a valid `cbshare` packet arrived from); the footer tags each
-resolution `· online` / `· LAN 6768` / `· cache`; `dev/lan_probe.py`
-(`listen` / `send`) proves whether 6768 crosses the network without
-involving Callbooker. If `N` stays 0 it is almost always the Windows
-Firewall (inbound UDP 6768) or a Public network profile on the receiving
-PC.
+**Troubleshooting a multi-op that isn't sharing:** `dev/lan_probe.py`
+(`listen` on one PC, `send` on the other) proves whether 6768 datagrams
+cross the network at all, independent of Callbooker. When they don't, it
+is almost always the receiving PC's Windows Firewall (inbound UDP 6768
+blocked) or its network being a Public profile. 1.4/1.5 also carried a
+footer resolution tag and a `(N peers)` title count — removed in 1.6 once
+sharing was confirmed working; `git log` has them if ever useful again.
 
 ### Why 6768 and not 12060
 
@@ -227,9 +226,10 @@ All in `n1mm_callbook.py` unless noted.
 - **`LANShare`** — the socket + listener thread. `start()` binds
   `("", port)` with `SO_REUSEADDR | SO_BROADCAST` (so several instances on
   one PC can share the port) and returns False if it can't (feature then
-  stays off). `_send` fires one datagram to `255.255.255.255:<port>`;
-  on a single-subnet multi-op LAN that reaches every host, and the sender
-  also receives its own echo (harmless — `Cache.merge` no-ops it, and it
+  stays off). `_send` fires the datagram to every address in
+  `self._targets` — `255.255.255.255` plus each interface's `<net>.255`
+  plus `lan_share_bcast` extras (`_broadcast_targets`). The sender
+  receives its own echoes (harmless — `Cache.merge` no-ops them, and it
   never self-answers a `req:"call"` because a cache miss is why it asked).
   `close()` sets the stop event.
 - **`LANShare._handle`** dispatches by `cbshare` marker then `req`:

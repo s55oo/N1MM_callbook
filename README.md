@@ -1,6 +1,6 @@
 # Callbooker – contest callbook for HF and VHF
 
-> **Version:** 1.5 · Made by **S55OO** with AI assistance.
+> **Version:** 1.6 · Made by **S55OO** with AI assistance.
 > · **Public domain** – see [LICENSE](LICENSE).
 
 A compact always-on-top window that listens to your logger's UDP broadcast
@@ -152,12 +152,11 @@ network** and every other position gets it instantly.
 - It is isolated from the loggers' own 12060 network — see
   `dev/lan-cache-sharing.md` for why a dedicated port.
 
-**Is it working?** The title bar shows `LAN 6768 (N peers)` — `N` is how
-many *other* PCs' 6768 this one has heard from. If it stays `0`:
+**Not sharing between PCs?** It is almost always the receiving PC's
+firewall or network profile:
 
-1. **Windows Firewall** on the PC that shows `0` is blocking inbound
-   UDP 6768. Allow **Callbooker** for the **Private** network, or in an
-   elevated prompt:
+1. **Windows Firewall** is blocking inbound UDP 6768. Allow **Callbooker**
+   for the **Private** network, or in an elevated prompt:
    `netsh advfirewall firewall add rule name="Callbooker 6768" dir=in action=allow protocol=UDP localport=6768`
 2. That PC's network is a **Public** profile — change it to **Private**.
 3. Multi-homed PC (VirtualBox / Hyper-V / VPN adapters): Callbooker aims
@@ -422,19 +421,15 @@ dev/*.py, dev/*.md      – logger-feed / VHFCtest4WIN notes and sniff tools
 
 Callbooker replaces the earlier separate apps (`n1mm_callbook` for HF,
 `VHFcallbook` for VHF, and before that `n1mm_VHFcallbook` /
-`VHFctest4WinCallbook`). All of their features are in `Callbooker` 1.5.
+`VHFctest4WinCallbook`). All of their features are in `Callbooker` 1.6.
 
-- **1.5** – LAN cache sharing (6768) diagnostics: the title bar shows
-  `LAN 6768 (N peers)`; the broadcast now also targets each interface's
-  `<net>.255` (not only `255.255.255.255`, which can egress a VirtualBox
-  / VPN adapter on a multi-homed PC) with a `lan_share_bcast=` override;
-  `dev/lan_probe.py` is a standalone two-PC "does 6768 cross the network"
-  test. Temporary, alongside the 1.4 footer tag.
-- **1.4** – **temporary diagnostic:** the footer shows how each callsign
-  resolved – `S55OO · online` (fetched now), `· LAN 6768` (a peer
-  answered), or `· cache` (already local) – for watching LAN cache
-  sharing work during a multi-op. Toggle `_SHOW_SOURCE_TAG` in
-  `n1mm_callbook.py`; a later version removes it.
+- **1.6** – removed the temporary LAN-sharing diagnostics from 1.4/1.5
+  (the footer source tag and the `(N peers)` title) now that multi-op
+  cache sharing is confirmed working. **Kept:** the multi-homed broadcast
+  fix – the 6768 broadcast targets each interface's `<net>.255` as well
+  as `255.255.255.255`, with a `lan_share_bcast=` override – and
+  `dev/lan_probe.py`, the standalone two-PC "does 6768 cross the network"
+  test.
 - **1.3** – optional **MQTT output**: one schema-versioned JSON document
   published after every completed lookup (cache hits included), with
   configurable broker, topic, QoS, retain, authentication, TLS, reconnect

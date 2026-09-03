@@ -26,9 +26,9 @@ cache_file=Callbooker_cache.json
 
 # Update check: on start-up (at most once a day) Callbooker asks GitHub
 # whether a newer release is out and shows a "click ?" nudge in the title
-# bar. Clicking the ? icon then downloads the new Callbooker.exe; the next
-# launch swaps it in. On by default; uncomment to disable:
-# update_check=no
+# bar / footer. Clicking the ? icon then downloads the new Callbooker.exe;
+# the next launch swaps it in. On by default; set to no to disable.
+update_check=yes
 
 # VHFCtest4WIN pre-log feed (UDP 6767) is ON by default; a callsign from
 # it always uses the VHF view. Uncomment to disable it (also stops the

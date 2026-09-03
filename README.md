@@ -210,8 +210,9 @@ cache_persist=yes                 # no = in-memory only, never writes to disk
 # selftest=yes
 # selftest_call=S55OO             # call to probe; blank / selftest=no disables
 
-# Update check (GitHub, once a day, title-bar nudge). On by default:
-# update_check=no
+# Update check (GitHub, once a day, title-bar / footer nudge). On by
+# default; set to no to disable:
+update_check=yes
 
 # QRZ.com login - the QRZ column uses the paid XML API when this is set
 # and the subscription is live, otherwise the public page (locator only):

@@ -181,6 +181,9 @@ docs / `dev/` / comment change is committed and pushed only.
 - `dev/logger-feeds.md` — every logger feed (N1MM, DXLog.net,
   VHFCtest4WIN) and the step-by-step method for adding another; the
   WriteLog to-do lives here.
+- `dev/lan-cache-sharing.md` — proposed (not built) UDP-gossip cache
+  sharing between Callbooker instances on a LAN: dedicated port 6768 (why
+  not 12060), two-tier design, firewall behaviour.
 - `dev/vhfctest4win-*.md`, `dev/sniff_multi.py`, `dev/test_rcvall2.py`,
   `dev/probe_window.py`, `dev/vhfctest4win-captures/` — the VHFCtest4WIN
   6767 reverse-engineering (protocol notes, sniff tools, packet captures).

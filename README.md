@@ -1,6 +1,6 @@
 # Callbooker – contest callbook for HF and VHF
 
-> **Version:** 1.7 · Made by **S55OO** with AI assistance.
+> **Version:** 1.8 · Made by **S55OO** with AI assistance.
 > · **Public domain** – see [LICENSE](LICENSE).
 
 A compact always-on-top window that listens to your logger's UDP broadcast
@@ -202,7 +202,7 @@ defaults when it is absent. Copy `Callbooker.cfg.template` and edit:
 ```
 [settings]
 udp_port=12060
-cache_days=30
+cache_days=3                      # freshness window; default and max 3
 cache_file=Callbooker_cache.json
 cache_persist=yes                 # no = in-memory only, never writes to disk
 
@@ -342,7 +342,9 @@ last `RadioInfo`; it is `null` for VHFCtest4WIN.
 - **Cache** (`Callbooker_cache.json`): a re-worked call resolves instantly
   and the servers aren't hit twice. Written **at most once a minute** (and
   once on close), stores only the displayed fields, prunes expired entries
-  on load. `cache_days` (default 30) is the freshness window;
+  on load. `cache_days` is the freshness window – **default and maximum
+  3** (callbook data drifts, so a stale entry is re-fetched within a few
+  days); a lower `cache_days` is honoured, a higher one is clamped to 3.
   `cache_persist=no` keeps it in memory only. The cache carries a schema
   version, so after an upgrade that changes the stored shape older entries
   re-fetch automatically.
@@ -425,8 +427,12 @@ dev/*.py, dev/*.md      – logger-feed / VHFCtest4WIN notes and sniff tools
 
 Callbooker replaces the earlier separate apps (`n1mm_callbook` for HF,
 `VHFcallbook` for VHF, and before that `n1mm_VHFcallbook` /
-`VHFctest4WinCallbook`). All of their features are in `Callbooker` 1.7.
+`VHFctest4WinCallbook`). All of their features are in `Callbooker` 1.8.
 
+- **1.8** – the local cache freshness window is now **3 days by default
+  and capped at 3** (`cache_days` can shorten it but not extend it).
+  Callbook data drifts, so an entry re-fetches within a few days;
+  existing caches drop their older entries on the next launch.
 - **1.7** – the footer is now a permanent **info line**: the worked
   callsign plus where its data came from once the lookup resolves –
   `· local` (this PC's cache), `· LAN` (a peer over 6768), or `· online`

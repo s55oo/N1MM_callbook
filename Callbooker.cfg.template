@@ -11,8 +11,9 @@ udp_port=12060
 
 # Sources (QRZCQ.com, HamQTH.com, and - in the VHF view - the public
 # QRZ.com page) are queried in parallel and cached. cache_days = how long
-# a cached result stays fresh.
-cache_days=30
+# a cached result stays fresh; default and maximum 3 (a lower value is
+# honoured, a higher one is clamped back to 3).
+cache_days=3
 cache_file=Callbooker_cache.json
 
 # cache_persist=no keeps the cache in memory only - zero disk writes,

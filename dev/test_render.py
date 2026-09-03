@@ -221,6 +221,20 @@ def main():
     ok &= check("cache: persist=off still de-dupes",
                 c.get("K1TTT") is not None, True)
 
+    # cache freshness window: clamped to MAX_CACHE_DAYS (3), min 1
+    ok &= check("cache_days: default is the 3-day max",
+                (cb.DEFAULT_CACHE_DAYS, cb.MAX_CACHE_DAYS), (3, 3))
+    ok &= check("cache_days: a higher value clamps to 3",
+                cb.clamp_cache_days(30), 3)
+    ok &= check("cache_days: 2 is honoured", cb.clamp_cache_days(2), 2)
+    ok &= check("cache_days: 0 / junk -> at least 1",
+                (cb.clamp_cache_days(0), cb.clamp_cache_days("x")), (1, 3))
+    exp = cb.Cache(tempfile.mktemp(suffix=".json"), 3, False)
+    exp._data["OLD"] = {"ts": time.time() - 4 * 86400, "v": cb.CACHE_SCHEMA,
+                        "sources": [{"state": "CT"}]}
+    ok &= check("cache: entry older than the 3-day window -> None",
+                exp.get("OLD"), None)
+
     # VHFCtest4WIN <V4W> packet parsing
     v4w_full = (
         b"<V4W><QSOINLOG><CALLSIGN>S56M</CALLSIGN>"

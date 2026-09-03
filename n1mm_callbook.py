@@ -16,7 +16,7 @@ the paid XML service when credentials are configured, else its public
 Made by S55OO with AI assistance.
 """
 
-__version__ = "1.7"
+__version__ = "1.8"
 
 import argparse
 import base64
@@ -39,14 +39,19 @@ import xml.etree.ElementTree as ET
 
 from mqtt_client import MqttPublisher, lookup_payload
 
-USER_AGENT = "Mozilla/5.0 Callbooker/1.7"
+USER_AGENT = "Mozilla/5.0 Callbooker/1.8"
 HAMQTH_UA = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
     "(KHTML, like Gecko) Chrome/126.0 Safari/537.36"
 )
 
 DEFAULT_PORT = 12060
-DEFAULT_CACHE_DAYS = 30
+# Cache freshness window in days: the default, and the hard ceiling that
+# `cache_days` in the .cfg is clamped to (see clamp_cache_days). Callbook
+# data drifts - QTHs move, grids get corrected - so a stale entry should
+# re-fetch within a few days.
+DEFAULT_CACHE_DAYS = 3
+MAX_CACHE_DAYS = 3
 
 # LAN cache sharing (see dev/lan-cache-sharing.md). A dedicated UDP port -
 # NOT 12060, which is the loggers' own multi-op network port - carries one
@@ -1133,6 +1138,17 @@ def app_dir():
     return os.path.dirname(os.path.abspath(__file__))
 
 
+def clamp_cache_days(days):
+    """The cache freshness window: at least 1 day, at most MAX_CACHE_DAYS
+    (3). A `cache_days` in the .cfg can shorten it but not extend it -
+    callbook data drifts, so a stale entry should re-fetch within days."""
+    try:
+        days = int(days)
+    except (TypeError, ValueError):
+        days = DEFAULT_CACHE_DAYS
+    return max(1, min(days, MAX_CACHE_DAYS))
+
+
 def load_config(path):
     """Parse the small ``key = value`` .cfg file.
 
@@ -1181,7 +1197,7 @@ def run(app_class, config_name, cache_name, description, always_vhfctest=False):
             return default
 
     port = as_int("udp_port", args.port)
-    cache_days = as_int("cache_days", DEFAULT_CACHE_DAYS)
+    cache_days = clamp_cache_days(as_int("cache_days", DEFAULT_CACHE_DAYS))
     cache_persist = settings.get("cache_persist", "yes").strip().lower() not in (
         "no", "false", "0", "off",
     )

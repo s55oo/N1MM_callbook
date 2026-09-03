@@ -337,6 +337,11 @@ def main():
     live_app.mqtt = types.SimpleNamespace(error="")
     live_app._mqtt_error_seen = ""
     live_app._resolved_from = None
+    live_app._update_inbox = []
+    live_app._update = None
+    live_app._update_state = ""
+    live_app._title_key = (False, "")
+    live_app._refresh_title = lambda: None
     live_app.call_label = FakeLabel()
     live_app.cache = FakeCache()
     live_app.stop = threading.Event()

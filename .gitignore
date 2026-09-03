@@ -9,6 +9,11 @@ VHFctest4WinCallbook.cfg
 *_cache.json
 *_window.json
 qrz_session.json
+update_check.json
+# update downloads / swap leftovers (next to the exe)
+Callbooker.exe.new
+Callbooker.exe.old
+Callbooker.exe.part
 dist/
 build/
 *.spec.bak

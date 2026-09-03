@@ -16,7 +16,7 @@ the paid XML service when credentials are configured, else its public
 Made by S55OO with AI assistance.
 """
 
-__version__ = "1.8"
+__version__ = "1.9"
 
 import argparse
 import base64
@@ -37,9 +37,10 @@ import tkinter.font as tkfont
 import urllib.parse
 import xml.etree.ElementTree as ET
 
+import updater
 from mqtt_client import MqttPublisher, lookup_payload
 
-USER_AGENT = "Mozilla/5.0 Callbooker/1.8"
+USER_AGENT = "Mozilla/5.0 Callbooker/1.9"
 HAMQTH_UA = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
     "(KHTML, like Gecko) Chrome/126.0 Safari/537.36"
@@ -1237,6 +1238,11 @@ def run(app_class, config_name, cache_name, description, always_vhfctest=False):
     # segment the sender's interface list doesn't cover).
     lan_share_bcast = settings.get("lan_share_bcast", "")
 
+    # GitHub-release update check (updater.py). On by default; once a day.
+    update_check = settings.get("update_check", "yes").strip().lower() not in (
+        "no", "false", "0", "off",
+    )
+
     # Side files live next to the cache: the remembered window position /
     # view and the QRZ XML session key.
     data_dir = os.path.dirname(cache_file)
@@ -1259,6 +1265,7 @@ def run(app_class, config_name, cache_name, description, always_vhfctest=False):
         settings,
         os.path.dirname(os.path.abspath(args.config)),
         lan_share_bcast,
+        update_check,
     )
     root.mainloop()
 
@@ -1304,7 +1311,8 @@ class CallbookApp:
     def __init__(self, root, cache_path, port, cache_days, qrz_username="",
                  qrz_password="", win_file=None, cache_persist=True,
                  vhfctest_port=0, selftest_call="", lan_share_port=0,
-                 mqtt_settings=None, config_dir="", lan_share_bcast=""):
+                 mqtt_settings=None, config_dir="", lan_share_bcast="",
+                 update_check=True):
         self.root = root
         self.port = port
         self.vhfctest_port = vhfctest_port
@@ -1357,6 +1365,13 @@ class CallbookApp:
         # cache), "LAN" (a peer over 6768), or "online" (a fresh
         # QRZ/QRZCQ/HamQTH fetch). Reset per callsign in _show_call.
         self._resolved_from = None
+        # GitHub-release update check (updater.py). _update holds
+        # (tag, asset_url) once a newer release is seen; _update_state
+        # tracks the download ("" / "getting" / "ready" / "failed").
+        self._update_check = bool(update_check)
+        self._update = None
+        self._update_inbox = []
+        self._update_state = ""
         # Start-up self-test (see _start_precheck). Empty call = disabled.
         self._selftest_call = normalize_call(selftest_call)
         self._precheck = None       # per source: None = pending, (status, ms)
@@ -1409,9 +1424,44 @@ class CallbookApp:
         self.root.after(100, self._poll_inbox)
         if self._selftest_call:
             self.root.after(150, self._start_precheck)
+        if self._update_check:
+            threading.Thread(target=self._run_update_check, daemon=True).start()
+
+    def _run_update_check(self):
+        # Daemon thread: ask GitHub (once a day) for a newer release; hand
+        # any result to the GUI via _update_inbox (drained in _poll_inbox).
+        try:
+            state_dir = (os.path.dirname(self.win_file) if self.win_file
+                         else app_dir())
+            found = updater.check(self.VERSION, state_dir)
+        except Exception:
+            found = None
+        if found:
+            self._update_inbox.append(found)
+
+    def _title(self):
+        # Base title; CallbookerApp overrides with the feed list.
+        return "{}  -  UDP {}  v{}".format(
+            self.APP_TITLE, self.port, self.VERSION
+        )
+
+    def _update_suffix(self):
+        # Appended to the title bar while a newer release is known.
+        if not self._update:
+            return ""
+        tag = self._update[0]
+        label = {
+            "getting": "downloading " + tag + " ...",
+            "ready": tag + " downloaded - restart Callbooker",
+            "failed": tag + " download failed - click ? for releases",
+        }.get(self._update_state, "update " + tag + " available - click ?")
+        return "   ·   " + label
+
+    def _refresh_title(self):
+        self.root.title(self._title() + self._update_suffix())
 
     def _build(self):
-        self.root.title("{}  -  UDP {}  v{}".format(self.APP_TITLE, self.port, self.VERSION))
+        self._refresh_title()
         self.root.attributes("-topmost", True)
         frame = tk.Frame(self.root, padx=6, pady=4)
         frame.pack()
@@ -1450,13 +1500,42 @@ class CallbookApp:
         self.canvas.coords(self.main_id, event.width / 2.0, event.height / 2.0)
 
     def _open_help(self):
-        # The "?" icon opens the project page in the default browser.
+        # The "?" icon: when a newer release is known it drives the update
+        # (download the exe, or open the releases page); otherwise it just
+        # opens the project page.
+        if self._update:
+            self._act_on_update()
+            return
+        self._open_url(HELP_URL)
+
+    @staticmethod
+    def _open_url(url):
         try:
             import webbrowser
 
-            webbrowser.open(HELP_URL)
+            webbrowser.open(url)
         except Exception:
             pass
+
+    def _act_on_update(self):
+        tag, asset_url = self._update
+        # From source, or after a failed download, or a release with no
+        # exe attached: just send them to the releases page.
+        if (not updater.is_frozen() or not asset_url
+                or self._update_state == "failed"):
+            self._open_url(updater.RELEASES_PAGE)
+            return
+        if self._update_state in ("getting", "ready"):
+            return  # already downloading / done - restart to finish
+        self._update_state = "getting"
+        self._refresh_title()
+        dest = updater.exe_path() + ".new"
+
+        def work():
+            self._update_state = "ready" if updater.download(
+                asset_url, dest) else "failed"
+
+        threading.Thread(target=work, daemon=True).start()
 
     _GEOM_RE = re.compile(r"^\d+x\d+([+-]\d+)([+-]\d+)$")
 
@@ -1820,6 +1899,21 @@ class CallbookApp:
             self._drain_lan_inbox()  # merge cache entries shared by LAN peers
         except Exception:
             pass
+        # GitHub-release update check: pick up the result, and keep the
+        # title-bar suffix in step with the download state (a worker thread
+        # flips _update_state).
+        if self._update_inbox:
+            self._update = self._update_inbox[-1]
+            self._update_inbox.clear()
+            if not self.current:
+                self.call_label.configure(
+                    text="Callbooker {} available - click the ? icon".format(
+                        self._update[0])
+                )
+        _title_key = (bool(self._update), self._update_state)
+        if _title_key != getattr(self, "_title_key", None):
+            self._title_key = _title_key
+            self._refresh_title()
         if self._v4w_status:
             msg, self._v4w_status = self._v4w_status, None
             if not self.current:  # don't clobber a lookup already on screen

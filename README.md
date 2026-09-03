@@ -1,6 +1,6 @@
 # Callbooker – contest callbook for HF and VHF
 
-> **Version:** 1.8 · Made by **S55OO** with AI assistance.
+> **Version:** 1.9 · Made by **S55OO** with AI assistance.
 > · **Public domain** – see [LICENSE](LICENSE).
 
 A compact always-on-top window that listens to your logger's UDP broadcast
@@ -210,6 +210,9 @@ cache_persist=yes                 # no = in-memory only, never writes to disk
 # selftest=yes
 # selftest_call=S55OO             # call to probe; blank / selftest=no disables
 
+# Update check (GitHub, once a day, title-bar nudge). On by default:
+# update_check=no
+
 # QRZ.com login - the QRZ column uses the paid XML API when this is set
 # and the subscription is live, otherwise the public page (locator only):
 # qrz_username=S55OO
@@ -372,7 +375,26 @@ last `RadioInfo`; it is `null` for VHFCtest4WIN.
   responses – the ~90 ms TLS handshake isn't paid every QSO. Time to fill
   all slots is ~155 ms (median) in testing.
 - The small **help icon** (top-right) opens the project page in your
-  browser.
+  browser – **or drives an update** when one is available (below).
+
+### Update check
+
+On start-up (at most once a day) Callbooker asks GitHub whether a newer
+release is out. If so the **title bar** shows `· update vX.Y available –
+click ?`. Clicking the **? icon** then:
+
+- **standalone exe:** downloads the new `Callbooker.exe` next to the
+  current one (`Callbooker.exe.new`) – the title shows `downloading…`
+  then `vX.Y downloaded – restart Callbooker`. **Restart Callbooker once**
+  and it swaps itself to the new version (a running `.exe` can't be
+  overwritten, only renamed, so the swap happens on the next launch).
+- **running from source:** opens
+  [the releases page](https://github.com/s55oo/N1MM_callbook/releases/) –
+  update with `git pull`.
+
+The check is one HTTPS request to GitHub (no account; your IP is visible
+to GitHub, nothing else). It never interrupts a lookup. Set
+`update_check=no` in `Callbooker.cfg` to turn it off.
 
 ---
 
@@ -405,18 +427,21 @@ Callbooker.cfg.template – config template (copy to Callbooker.cfg, drop .templ
 Callbooker.cfg          – live config (gitignored; holds the QRZ login in plain text)
 n1mm_callbook.py        – the engine: CallbookApp window, run(), the source functions
 mqtt_client.py          – optional reconnecting MQTT publisher (paho-mqtt)
+updater.py              – GitHub-release update check + self-swap (stdlib)
 requirements.txt        – Python runtime dependency (paho-mqtt)
 Callbooker.spec         – PyInstaller build settings
 manifest.xml            – PyInstaller manifest (common controls)
 Callbooker_cache.json   – local lookup cache          (auto-created, gitignored)
 Callbooker_window.json  – last window position + view (auto-created, gitignored)
 qrz_session.json        – cached QRZ XML session key   (auto-created, gitignored)
+update_check.json       – last update-check result     (auto-created, gitignored)
 LICENSE                 – The Unlicense (public domain)
 CLAUDE.md               – developer notes (architecture, gotchas, release steps)
 docs/*.png              – screenshots used in this README
 dev/test_render.py      – headless display-logic tests (no network)
 dev/test_lan_share.py   – headless LAN cache-sharing tests (no sockets)
 dev/test_mqtt.py        – MQTT config/payload tests (no broker required)
+dev/test_updater.py     – update-check / download / swap tests (no network)
 dev/bench_latency.py    – lookup-latency benchmark
 dev/*.py, dev/*.md      – logger-feed / VHFCtest4WIN notes and sniff tools
 ```
@@ -427,8 +452,14 @@ dev/*.py, dev/*.md      – logger-feed / VHFCtest4WIN notes and sniff tools
 
 Callbooker replaces the earlier separate apps (`n1mm_callbook` for HF,
 `VHFcallbook` for VHF, and before that `n1mm_VHFcallbook` /
-`VHFctest4WinCallbook`). All of their features are in `Callbooker` 1.8.
+`VHFctest4WinCallbook`). All of their features are in `Callbooker` 1.9.
 
+- **1.9** – **update check.** On start-up (once a day) Callbooker checks
+  GitHub for a newer release and shows a `· update vX.Y – click ?` nudge
+  in the title bar. Clicking the **?** icon downloads the new
+  `Callbooker.exe` next to the current one; the next launch swaps it in.
+  From source it opens the releases page instead. `update_check=no` to
+  disable.
 - **1.8** – the local cache freshness window is now **3 days by default
   and capped at 3** (`cache_days` can shorten it but not extend it).
   Callbook data drifts, so an entry re-fetches within a few days;

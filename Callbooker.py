@@ -32,13 +32,13 @@ the rest get it instantly. See ``dev/lan-cache-sharing.md``.
 
 Made by S55OO with AI assistance.
 
-Version: 1.8
+Version: 1.9
 
 Usage:
     python Callbooker.py [--port 12060] [--config Callbooker.cfg]
 """
 
-__version__ = "1.8"
+__version__ = "1.9"
 
 import ctypes
 import functools
@@ -238,19 +238,21 @@ class CallbookerApp(cb.CallbookApp):
         except OSError:
             pass
 
-    def _build(self):
-        super()._build()
+    def _title(self):
         extra = "  +  UDP {}".format(self.vhfctest_port) if self.vhfctest_port else ""
         if getattr(self, "lan", None) is not None:
             extra += "  +  LAN {}".format(self.lan_share_port)
-        self.root.title(
-            "{}  -  UDP {}{}  auto HF/VHF  v{}".format(
-                self.APP_TITLE, self.port, extra, self.VERSION
-            )
+        return "{}  -  UDP {}{}  auto HF/VHF  v{}".format(
+            self.APP_TITLE, self.port, extra, self.VERSION
         )
 
 
 def main():
+    # A previous run may have downloaded a newer Callbooker.exe next to us;
+    # finish that update (swap + relaunch) before anything else.
+    import updater
+    if updater.apply_pending():
+        return
     want_v4w = _wants_v4w_feed(sys.argv)
     if (
         want_v4w

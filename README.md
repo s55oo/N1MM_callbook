@@ -1,6 +1,6 @@
 # Callbooker – contest callbook for HF and VHF
 
-> **Version:** 1.1 · Made by **S55OO** with AI assistance.
+> **Version:** 1.2 · Made by **S55OO** with AI assistance.
 > · **Public domain** – see [LICENSE](LICENSE).
 
 A compact always-on-top window that listens to your logger's UDP broadcast
@@ -128,6 +128,30 @@ UAC prompt below) off.
 - On another PC on the multi-op network, an ordinary listener works with
   no prompt.
 
+### LAN cache sharing (6768)
+
+In a multi-op or multi-PC setup, every Callbooker on the LAN **shares the
+callsigns it looks up** on a dedicated broadcast port (**UDP 6768**), so
+each call is fetched from QRZ / QRZCQ / HamQTH **once for the whole
+network** and every other position gets it instantly.
+
+- **On by default.** `lan_share=no` in `Callbooker.cfg` turns it off;
+  `lan_share_port=` moves it.
+- On a local cache miss Callbooker asks the LAN first and only queries the
+  callbook sites if no peer answers within ~50 ms — imperceptible, and a
+  LAN hit is as fast as its own cache.
+- On start-up it asks every peer to replay their cache, so a PC that joins
+  mid-contest catches up in a few seconds.
+- Only the **displayed fields** go on the wire — the same data already in
+  `Callbooker_cache.json`. **No QRZ login or session key is ever
+  broadcast.**
+- **First run may show a Windows Firewall prompt for port 6768 — allow it
+  for Private networks** (same as the 6767 / 12060 listeners). On a
+  *Public* network profile inbound is blocked by default and peers' data
+  silently won't arrive.
+- It is isolated from the loggers' own 12060 network — see
+  `dev/lan-cache-sharing.md` for why a dedicated port.
+
 ---
 
 ## 2. Running
@@ -177,6 +201,12 @@ cache_persist=yes                 # no = in-memory only, never writes to disk
 # set no to turn it - and the UAC prompt - off:
 # vhfctest_share=no
 # vhfctest_port=6767
+
+# LAN cache sharing, UDP 6768 (see section 1). On by default; every
+# Callbooker on the LAN shares resolved callsigns so each is fetched
+# from the callbook sites only once for the whole network:
+# lan_share=no
+# lan_share_port=6768
 ```
 
 There is **no HF/VHF-mode key** – Callbooker picks the view from the
@@ -289,8 +319,9 @@ LICENSE                 – The Unlicense (public domain)
 CLAUDE.md               – developer notes (architecture, gotchas, release steps)
 docs/*.png              – screenshots used in this README
 dev/test_render.py      – headless display-logic tests (no network)
+dev/test_lan_share.py   – headless LAN cache-sharing tests (no sockets)
 dev/bench_latency.py    – lookup-latency benchmark
-dev/*.py, dev/*.md      – VHFCtest4WIN reverse-engineering notes and sniff tools
+dev/*.py, dev/*.md      – logger-feed / VHFCtest4WIN notes and sniff tools
 ```
 
 ---
@@ -299,8 +330,18 @@ dev/*.py, dev/*.md      – VHFCtest4WIN reverse-engineering notes and sniff too
 
 Callbooker replaces the earlier separate apps (`n1mm_callbook` for HF,
 `VHFcallbook` for VHF, and before that `n1mm_VHFcallbook` /
-`VHFctest4WinCallbook`). All of their features are in `Callbooker` 1.1.
+`VHFctest4WinCallbook`). All of their features are in `Callbooker` 1.2.
 
+- **1.2** – **LAN cache sharing** (UDP 6768, on by default). Every
+  Callbooker on the LAN shares the callsigns it resolves, so in a
+  multi-op each call is fetched from QRZ / QRZCQ / HamQTH **once for the
+  whole network**. On a local cache miss Callbooker asks the LAN first
+  and only queries the websites if no peer answers within ~50 ms; on
+  start-up it pulls every peer's cache. Only the displayed fields go on
+  the wire — never a QRZ login. Dedicated port, isolated from the
+  loggers' own 12060 network (`dev/lan-cache-sharing.md`). Also documents
+  DXLog.net (works on 12060 with no code change) and adds a dev note on
+  adding further loggers.
 - **1.1** – single-app release. One window, two feeds (N1MM 12060 +
   VHFCtest4WIN 6767), HF/VHF view chosen per callsign from the operating
   frequency (`rxfreq` in the packet, or the last `RadioInfo`), remembered

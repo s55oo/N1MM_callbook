@@ -28,6 +28,14 @@ cache_file=Callbooker_cache.json
 # "run as Administrator" prompt):
 # vhfctest_share=no
 
+# LAN cache sharing (UDP 6768) is ON by default: every Callbooker on the
+# LAN shares resolved callsigns, so only one PC ever queries the callbook
+# sites for a given call and the others get it instantly. First run may
+# show a Windows Firewall prompt for port 6768 - allow it for Private
+# networks. Uncomment to disable, or to move it to another port:
+# lan_share=no
+# lan_share_port=6768
+
 # Paid QRZ.com XML Callbook Data service - adds a slot to whichever view
 # is active. Requires an active QRZ XML subscription.
 # qrz_username=S55OO

@@ -44,6 +44,8 @@ PyInstaller is only needed to build the EXE. Public domain (Unlicense).
 | `packet_callsign()` | pull the worked call out of a `LookupInfo`/`ContactInfo`/`ContactReplace` XML packet (`RadioInfo`'s call is the local op's — ignored for the callsign). DXLog.net's "N1MM format" broadcast sends a byte-compatible `<lookupinfo>` on 12060 (on Space/Tab, pre-log, `<txfreq>` in tens of Hz) — parses with no change |
 | `packet_v4w()` | pull the callsign out of a VHFCtest4WIN `<V4W><QSOINLOG>` sharing packet (UDP 6767); empty `<CALLSIGN>` → `None` |
 | `packet_freq_mhz()` | operating frequency in MHz from `<rxfreq>`/`<txfreq>`/`<Freq>` (N1MM's *tens of Hz*, so ÷100000), any packet type; `None` if absent. Callbooker's HF/VHF switch |
+| `LANShare` | LAN cache sharing on a dedicated UDP port (default 6768, `lan_share=no` to disable). One JSON packet type with a `cbshare` marker: entry / call-request / sync-request. On a local cache miss `_on_stable` broadcasts a call-request and waits `LAN_GRACE_MS` (50 ms) before the HTTP lookup; a peer's entry cancels it. Only `_CACHE_FIELDS` on the wire — never a QRZ login. `dev/lan-cache-sharing.md` |
+| `Cache.merge()` / `put()`→ts / `get_with_ts()` / `items_since()` | the cache hooks `LANShare` uses — newer-wins merge of a received entry, the `ts` to gossip, and the newest-first replay list for a sync |
 | `v4w_listener_loop()` | the 6767 listener (Callbooker, on unless `vhfctest_share=no`). Tries a normal UDP bind; VHFCtest4WIN holds 6767 with `SO_EXCLUSIVEADDRUSE`, so if it is already running the bind fails and it falls back to `_v4w_raw_listen` — a Windows `SIO_RCVALL` raw socket that needs the app run as admin. Feeds callsigns to `_on_v4w_call` → `_v4w_inbox` → `_poll_inbox` (drained on the GUI thread) → `_handle_call` |
 | `normalize_call()` / `normalize_grid()` | sanitise the call; upper-case locators so a case-only difference isn't seen as a disagreement |
 | `_HttpPool` / `http_get()` | one kept-alive HTTPS connection per host, gzip, per-host lock, stale-connection retry, busy-host fallback to a one-shot connection. **All source fetches go through `http_get`.** |
@@ -55,12 +57,15 @@ PyInstaller is only needed to build the EXE. Public domain (Unlicense).
 
 ### Lookup flow
 
-`on_packet` → debounce 300 ms → `_on_stable` → cache hit renders
-immediately, else `_start_lookup` → `_do_lookup` spawns **one thread per
+`on_packet` → debounce 300 ms → `_on_stable` → **local cache hit** renders
+immediately. Else, with LAN sharing on: broadcast a call-request, arm
+`_await_lan`, schedule `_lan_grace_expired` 50 ms out — a peer's entry
+merges into the cache and renders (lookup skipped); no peer →
+`_start_lookup`. `_start_lookup` → `_do_lookup` spawns **one thread per
 source** → each posts `(call, slot_index, result_or_None)` to `self._inbox`
-→ `_poll_inbox` (GUI thread, every 100 ms) drains it, drops results whose
-call != `self.current`, renders each slot as it lands, caches once every
-slot is in.
+→ `_poll_inbox` (GUI thread, every 100 ms) drains it (and `_lan_inbox`),
+drops results whose call != `self.current`, renders each slot as it lands,
+caches once every slot is in — then `lan.broadcast_entry` shares it.
 
 ### Start-up self-test
 
@@ -176,18 +181,22 @@ docs / `dev/` / comment change is committed and pushed only.
 - `dev/test_render.py` — headless render-logic tests (fake canvas + a
   withdrawn Tk root for font metrics, no network). `make(cls)` builds a
   bare instance; `vh` is a `CallbookerApp` switched to the VHF view.
+- `dev/test_lan_share.py` — headless LAN cache-sharing tests (no sockets):
+  `Cache` helpers, `LANShare._handle` packet dispatch, and the LAN-first
+  lookup order via a fake Tk root / canvas.
 - `dev/bench_latency.py` — per-source and end-to-end lookup latency
   (reads QRZ creds from `Callbooker.cfg` if present).
 - `dev/logger-feeds.md` — every logger feed (N1MM, DXLog.net,
   VHFCtest4WIN) and the step-by-step method for adding another; the
   WriteLog to-do lives here.
-- `dev/lan-cache-sharing.md` — design-locked (not built) UDP-gossip cache
-  sharing between Callbooker instances on a LAN: dedicated port 6768 (why
-  not 12060), one entry packet + two request lines, ask-the-LAN-before-
-  the-callbook-servers lookup order, live broadcast + startup "replay as
-  gossip" catch-up, storm guards, firewall behaviour.
+- `dev/lan-cache-sharing.md` — LAN cache sharing (`LANShare`, shipped in
+  1.2): dedicated port 6768 (why not 12060), one entry packet + two
+  request lines, ask-the-LAN-before-the-callbook-sites lookup order,
+  live broadcast + startup "replay as gossip" catch-up, storm guards,
+  firewall behaviour, and an "as built" code map.
 - `dev/vhfctest4win-*.md`, `dev/sniff_multi.py`, `dev/test_rcvall2.py`,
   `dev/probe_window.py`, `dev/vhfctest4win-captures/` — the VHFCtest4WIN
   6767 reverse-engineering (protocol notes, sniff tools, packet captures).
 
-Run: `python dev/test_render.py` / `python dev/bench_latency.py`.
+Run: `python dev/test_render.py` / `python dev/test_lan_share.py` /
+`python dev/bench_latency.py`.

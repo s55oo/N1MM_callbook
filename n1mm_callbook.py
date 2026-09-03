@@ -16,7 +16,7 @@ the paid XML service when credentials are configured, else its public
 Made by S55OO with AI assistance.
 """
 
-__version__ = "1.1"
+__version__ = "1.2"
 
 import argparse
 import base64
@@ -25,6 +25,7 @@ import gzip
 import http.client
 import json
 import os
+import random
 import re
 import select
 import socket
@@ -36,7 +37,7 @@ import tkinter.font as tkfont
 import urllib.parse
 import xml.etree.ElementTree as ET
 
-USER_AGENT = "Mozilla/5.0 Callbooker/1.1"
+USER_AGENT = "Mozilla/5.0 Callbooker/1.2"
 HAMQTH_UA = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
     "(KHTML, like Gecko) Chrome/126.0 Safari/537.36"
@@ -44,6 +45,19 @@ HAMQTH_UA = (
 
 DEFAULT_PORT = 12060
 DEFAULT_CACHE_DAYS = 30
+
+# LAN cache sharing (see dev/lan-cache-sharing.md). A dedicated UDP port -
+# NOT 12060, which is the loggers' own multi-op network port - carries one
+# small JSON packet type between Callbooker instances on a LAN. On a local
+# cache miss an instance asks the LAN and only queries the callbook
+# websites if no peer answers within the grace period.
+LAN_SHARE_PORT = 6768
+LAN_PROTO = 1          # the "cbshare" marker / on-wire protocol version
+LAN_GRACE_MS = 50      # wait this long for a peer before the HTTP lookup
+LAN_SYNC_MIN_INTERVAL = 30   # seconds; ignore repeat sync requests inside this
+LAN_SYNC_SELF_HOLD = 10      # don't answer others' sync while catching up ourselves
+LAN_SYNC_RATE = 200         # entry packets per second when replaying the cache
+LAN_SYNC_CAP = 1000         # most entries a peer will replay for one sync
 HELP_URL = "https://github.com/s55oo/N1MM_callbook/"
 HELP_ICON_B64 = (
     "iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAABFElEQVR4nK2TMYqFMBCGJ49X2HoArQTBTqxsbCysBSutLbyBR4gH8AQBW0/gARQUC/EGVlZ2WmVByBJiIizswBTO+P35J0wQSKIsSyqrY4yRWEMyuGkaGQ9pmj5EkHiqCuZFeDcfvsngIAig6zpY1xUIIWAYxuOfh23TNO90XZcex0HzPKeO41BCCJ2m6bfPkjlG4sxxHEOSJJBl2f2t6zrM8wy2bcN5no9xvqKbtm3vZOF5HmzbBtd1Se/k+3Zhvu9DVVVQFAVQSv8moGka1HV9w8MwKA/5qBqWZcG+79D3/ZtJUAosywJRFL3CtwDGGLHl4CMMQxjHUQmyrUSs8LbCKvgxgsyJDObj/x6TKCKry57zD5uWhA5j8tjMAAAAAElFTkSuQmCC"
@@ -486,6 +500,20 @@ CACHE_SCHEMA = 2
 _CACHE_FIELDS = ("name", "state", "cqzone", "grid", "country")
 
 
+def _lan_trim(sources):
+    """Reduce a list of per-source result dicts to just ``_CACHE_FIELDS``.
+
+    The same shape the cache stores on disk - so a LAN gossip packet
+    carries only the displayed fields, never a QRZ login or session key.
+    Non-dict / None slots are dropped.
+    """
+    return [
+        {k: (s.get(k) or "") for k in _CACHE_FIELDS}
+        for s in sources
+        if isinstance(s, dict)
+    ]
+
+
 class Cache:
     """Small JSON cache for callbook lookups.
 
@@ -548,12 +576,52 @@ class Cache:
         return sources
 
     def put(self, call, sources):
-        trimmed = [
-            {k: (s.get(k) or "") for k in _CACHE_FIELDS} if isinstance(s, dict) else s
-            for s in sources
-        ]
-        self._data[call] = {"ts": time.time(), "v": CACHE_SCHEMA, "sources": trimmed}
+        """Store a freshly resolved result. Returns the timestamp stored
+        (used as the ``ts`` of the LAN gossip packet for this entry)."""
+        now = time.time()
+        self._data[call] = {
+            "ts": now, "v": CACHE_SCHEMA, "sources": _lan_trim(sources),
+        }
         self._dirty = True
+        return now
+
+    def merge(self, call, sources, ts):
+        """Store an entry received from a LAN peer, but only if it is newer
+        than what we already have (or we have nothing). Returns True if it
+        was stored. The freshness check means a real re-work always wins
+        over a stale gossip entry for the same call."""
+        if not call or not isinstance(sources, list) or not sources:
+            return False
+        existing = self._data.get(call)
+        if existing and existing.get("ts", 0) >= ts:
+            return False
+        self._data[call] = {
+            "ts": ts, "v": CACHE_SCHEMA, "sources": _lan_trim(sources),
+        }
+        self._dirty = True
+        return True
+
+    def get_with_ts(self, call):
+        """``(sources, ts)`` for a fresh cache entry, or None - for
+        answering a LAN peer's call-request with the timestamp intact."""
+        sources = self.get(call)
+        if sources is None:
+            return None
+        return sources, self._data[call].get("ts", 0)
+
+    def items_since(self, since):
+        """``(call, sources, ts)`` for every fresh entry newer than
+        *since*, newest first - the payload of a startup sync replay."""
+        cutoff = time.time() - self.days * 86400
+        out = [
+            (call, e["sources"], e["ts"])
+            for call, e in self._data.items()
+            if e.get("v") == CACHE_SCHEMA
+            and e.get("ts", 0) > max(since, cutoff)
+            and isinstance(e.get("sources"), list) and e["sources"]
+        ]
+        out.sort(key=lambda t: t[2], reverse=True)
+        return out
 
     def flush(self, force=False):
         """Write the store to disk if it is dirty and either ``force`` is
@@ -572,6 +640,177 @@ class Cache:
             self._last_flush = time.time()
         except OSError:
             pass
+
+
+class LANShare:
+    """UDP-broadcast callbook-cache sharing between Callbooker instances.
+
+    Design and rationale: ``dev/lan-cache-sharing.md``. One dedicated port
+    (default 6768 - *not* the loggers' 12060), one small JSON packet type
+    with a ``cbshare`` marker so stray traffic is ignored. Three packet
+    shapes:
+
+    * **entry** ``{"cbshare",  "call", "sources", "ts", "schema"}`` - a
+      resolved callsign. Broadcast after an HTTP lookup and in reply to a
+      call-request; received ones are merged into the local cache
+      (newer-wins) and never re-broadcast.
+    * **call-request** ``{"cbshare", "req": "call", "call"}`` - "does
+      anyone have this call?", sent on a local cache miss.
+    * **sync-request** ``{"cbshare", "req": "sync", "since"}`` - sent once
+      on start-up; every peer replays its cache as entry packets
+      (newest-first, rate-limited, staggered, capped).
+
+    Only ``_CACHE_FIELDS`` go on the wire - never a QRZ login or session
+    key. A peer on a different ``CACHE_SCHEMA`` is ignored.
+
+    The listener thread only ever calls ``on_entry(call, sources, ts)``,
+    which must be a cheap thread-safe hand-off (a list append) - the GUI
+    thread does the cache merge and any redraw, same rule as the other
+    feeds.
+    """
+
+    def __init__(self, port, cache, on_entry, local_ips):
+        self.port = port
+        self.cache = cache
+        self.on_entry = on_entry
+        self.local = set(local_ips)
+        self.stop = threading.Event()
+        self._sock = None
+        self._last_sync_served = 0.0
+        self._own_sync_ts = 0.0
+        self._thread = threading.Thread(target=self._listen, daemon=True)
+
+    def start(self):
+        """Bind the port and start listening. Returns False if the port
+        cannot be bound (feature then simply stays off)."""
+        try:
+            sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+            sock.bind(("", self.port))
+            sock.settimeout(0.3)
+        except OSError:
+            return False
+        self._sock = sock
+        self._thread.start()
+        return True
+
+    def close(self):
+        self.stop.set()
+
+    # -- outgoing ------------------------------------------------------------
+
+    def _send(self, obj):
+        if self._sock is None:
+            return
+        try:
+            data = json.dumps(obj, ensure_ascii=False).encode("utf-8")
+        except (TypeError, ValueError):
+            return
+        try:
+            self._sock.sendto(data, ("255.255.255.255", self.port))
+        except OSError:
+            pass
+
+    def broadcast_entry(self, call, sources, ts):
+        self._send({
+            "cbshare": LAN_PROTO, "call": call,
+            "sources": _lan_trim(sources), "ts": ts, "schema": CACHE_SCHEMA,
+        })
+
+    def request_call(self, call):
+        self._send({"cbshare": LAN_PROTO, "req": "call", "call": call})
+
+    def request_sync(self):
+        self._own_sync_ts = time.time()
+        self._send({"cbshare": LAN_PROTO, "req": "sync", "since": 0})
+
+    # -- incoming ----------------------------------------------------------
+
+    def _listen(self):
+        while not self.stop.is_set():
+            try:
+                data, addr = self._sock.recvfrom(65535)
+            except socket.timeout:
+                continue
+            except OSError:
+                break
+            try:
+                self._handle(data, addr[0])
+            except Exception:
+                pass
+        try:
+            self._sock.close()
+        except OSError:
+            pass
+
+    def _handle(self, data, src):
+        if len(data) > 60000:
+            return
+        try:
+            msg = json.loads(data.decode("utf-8"))
+        except (ValueError, UnicodeDecodeError):
+            return
+        if not isinstance(msg, dict) or msg.get("cbshare") != LAN_PROTO:
+            return
+        req = msg.get("req")
+        if req == "call":
+            self._serve_call(msg)
+        elif req == "sync":
+            self._serve_sync(msg, src)
+        elif "sources" in msg:
+            self._recv_entry(msg)
+
+    def _recv_entry(self, msg):
+        if msg.get("schema") != CACHE_SCHEMA:
+            return
+        call = normalize_call(str(msg.get("call") or ""))
+        sources = msg.get("sources")
+        try:
+            ts = float(msg.get("ts") or 0)
+        except (TypeError, ValueError):
+            return
+        if not call or not isinstance(sources, list) or not sources:
+            return
+        if ts <= 0 or ts > time.time() + 3600:   # 0 / far-future -> junk
+            return
+        self.on_entry(call, sources, ts)
+
+    def _serve_call(self, msg):
+        call = normalize_call(str(msg.get("call") or ""))
+        if not call:
+            return
+        hit = self.cache.get_with_ts(call)
+        if hit is not None:
+            self.broadcast_entry(call, hit[0], hit[1])
+
+    def _serve_sync(self, msg, src):
+        now = time.time()
+        if src in self.local:
+            return   # our own request, echoed back to us
+        if now - self._own_sync_ts < LAN_SYNC_SELF_HOLD:
+            return   # we asked for a sync ourselves just now - still catching up
+        if now - self._last_sync_served < LAN_SYNC_MIN_INTERVAL:
+            return   # answered a sync very recently; let that one land
+        self._last_sync_served = now
+        try:
+            since = float(msg.get("since") or 0)
+        except (TypeError, ValueError):
+            since = 0.0
+        entries = self.cache.items_since(since)[:LAN_SYNC_CAP]
+        if entries:
+            threading.Thread(
+                target=self._replay, args=(entries,), daemon=True
+            ).start()
+
+    def _replay(self, entries):
+        time.sleep(random.uniform(0.0, 0.5))   # stagger vs. other responders
+        gap = 1.0 / LAN_SYNC_RATE
+        for call, sources, ts in entries:
+            if self.stop.is_set():
+                return
+            self.broadcast_entry(call, sources, ts)
+            time.sleep(gap)
 
 
 def qrzcq_lookup(call, timeout=15):
@@ -946,6 +1185,15 @@ def run(app_class, config_name, cache_name, description, always_vhfctest=False):
     if always_vhfctest or (getattr(app_class, "VHFCTEST_CAPABLE", False) and share):
         vhfctest_port = as_int("vhfctest_port", 6767)
 
+    # LAN cache sharing (dev/lan-cache-sharing.md). On by default; every
+    # Callbooker on the LAN shares resolved callsigns so only one PC ever
+    # queries the callbook sites for a given call. lan_share=no turns it off.
+    lan_share_port = 0
+    if settings.get("lan_share", "yes").strip().lower() not in (
+        "no", "false", "0", "off",
+    ):
+        lan_share_port = as_int("lan_share_port", LAN_SHARE_PORT)
+
     # Side files live next to the cache: the remembered window position /
     # view and the QRZ XML session key.
     data_dir = os.path.dirname(cache_file)
@@ -964,6 +1212,7 @@ def run(app_class, config_name, cache_name, description, always_vhfctest=False):
         cache_persist,
         vhfctest_port,
         selftest_call,
+        lan_share_port,
     )
     root.mainloop()
 
@@ -1008,10 +1257,11 @@ class CallbookApp:
 
     def __init__(self, root, cache_path, port, cache_days, qrz_username="",
                  qrz_password="", win_file=None, cache_persist=True,
-                 vhfctest_port=0, selftest_call=""):
+                 vhfctest_port=0, selftest_call="", lan_share_port=0):
         self.root = root
         self.port = port
         self.vhfctest_port = vhfctest_port
+        self.lan_share_port = lan_share_port
         self.cache = Cache(cache_path, cache_days, cache_persist)
         self.win_file = win_file
         self.current = None
@@ -1039,6 +1289,13 @@ class CallbookApp:
         # hand-off pattern as _inbox - never touch Tk from that thread).
         self._v4w_inbox = []
         self._v4w_status = None  # one-shot hint text from the v4w listener
+        # LAN cache sharing. The listener thread appends received entries
+        # (call, sources, ts) here; _poll_inbox / the grace timer merge
+        # them on the GUI thread. _await_lan holds the callsign we have an
+        # outstanding call-request for (waiting out LAN_GRACE_MS before the
+        # HTTP lookup); a matching entry clears it and skips the lookup.
+        self._lan_inbox = []
+        self._await_lan = None
         # Start-up self-test (see _start_precheck). Empty call = disabled.
         self._selftest_call = normalize_call(selftest_call)
         self._precheck = None       # per source: None = pending, (status, ms)
@@ -1050,6 +1307,18 @@ class CallbookApp:
         self._font_cache = {}  # size -> tkfont.Font, for width measurement
         self.local = set(local_interfaces())
         self.local.add("127.0.0.1")
+        # Optional LAN cache-sharing feed on its own UDP port (started
+        # before _build so the title bar can show it). Off if the port
+        # cannot be bound.
+        self.lan = None
+        if self.lan_share_port:
+            lan = LANShare(
+                self.lan_share_port, self.cache, self._queue_lan_entry,
+                self.local,
+            )
+            if lan.start():
+                self.lan = lan
+                lan.request_sync()  # ask peers to replay their caches
         self._build()
         self._restore_window()
         self.stop = threading.Event()
@@ -1175,6 +1444,39 @@ class CallbookApp:
         # for _poll_inbox to show in the footer on the GUI thread.
         self._v4w_status = msg
 
+    def _queue_lan_entry(self, call, sources, ts):
+        # LANShare listener thread: hand a received entry to the GUI thread
+        # (a plain list append is safe). _drain_lan_inbox does the merge.
+        self._lan_inbox.append((call, sources, ts))
+
+    def _drain_lan_inbox(self):
+        # GUI thread: merge received LAN entries into the cache (newer-wins)
+        # and, when one answers the callsign on screen, show it.
+        if not self._lan_inbox:
+            return
+        items, self._lan_inbox = self._lan_inbox, []
+        merged_any = False
+        for call, sources, ts in items:
+            if self.cache.merge(call, sources, ts):
+                merged_any = True
+        cur = self.current
+        if not merged_any or cur is None:
+            return
+        cached = self.cache.get(cur)
+        if cached is None:
+            return
+        awaiting = self._await_lan == cur
+        have_http_data = bool(self._slots) and any(
+            s is not None for s in self._slots
+        )
+        # Show the LAN result when we were waiting for it, or when a lookup
+        # is not already painting real data - never fight an in-flight HTTP
+        # render.
+        if awaiting or not have_http_data:
+            self._await_lan = None
+            self._slots = None
+            self._render_slots(cur, list(cached), set())
+
     def _handle_call(self, call):
         # Shared path for a worked callsign from any feed (the N1MM
         # LookupInfo/ContactInfo packet, or a VHFCtest4WIN <V4W> broadcast).
@@ -1186,6 +1488,7 @@ class CallbookApp:
         # but debounce the network lookup until it has been stable a moment.
         if self.current != call:
             self.current = call
+            self._await_lan = None  # any pending call-request is now stale
             self._show_call(call)
         if self._debounce is not None:
             self.root.after_cancel(self._debounce)
@@ -1193,14 +1496,34 @@ class CallbookApp:
 
     def _on_stable(self, call):
         self._debounce = None
+        self._await_lan = None
         if call != self.current:
             return
         sources = self.cache.get(call)
         if sources is not None:
             self._slots = None
             self._render_slots(call, list(sources), set())
+        elif self.lan is not None:
+            # Ask the LAN first: broadcast a call-request and give a peer a
+            # short grace to answer before falling through to the callbook
+            # websites. A matching entry (handled in _drain_lan_inbox)
+            # clears _await_lan, so _lan_grace_expired then does nothing.
+            self._await_lan = call
+            self.lan.request_call(call)
+            self.root.after(LAN_GRACE_MS, self._lan_grace_expired, call)
         else:
             self._start_lookup(call)
+
+    def _lan_grace_expired(self, call):
+        if self._await_lan != call or call != self.current:
+            return  # superseded, or a peer already answered
+        # Fold in anything that just arrived; if it answers `call` this
+        # clears _await_lan and paints the result.
+        self._drain_lan_inbox()
+        if self._await_lan != call or call != self.current:
+            return  # a peer answered inside the grace window
+        self._await_lan = None
+        self._start_lookup(call)
 
     def _show_call(self, call):
         self.call_label.configure(text=call)
@@ -1334,6 +1657,10 @@ class CallbookApp:
                 self._handle_call(latest)
             except Exception:
                 pass
+        try:
+            self._drain_lan_inbox()  # merge cache entries shared by LAN peers
+        except Exception:
+            pass
         if self._v4w_status:
             msg, self._v4w_status = self._v4w_status, None
             if not self.current:  # don't clobber a lookup already on screen
@@ -1360,7 +1687,11 @@ class CallbookApp:
                 if not self._pending_inds:
                     # Only cache a complete, error-free set of results.
                     if not any(s is None for s in self._slots):
-                        self.cache.put(call, list(self._slots))
+                        ts = self.cache.put(call, list(self._slots))
+                        if self.lan is not None:
+                            self.lan.broadcast_entry(
+                                call, list(self._slots), ts
+                            )
                 self._render_slots(call, self._slots, self._pending_inds)
         except Exception:
             pass
@@ -1527,5 +1858,7 @@ class CallbookApp:
     def on_close(self):
         self._save_window()
         self.cache.flush(force=True)
+        if self.lan is not None:
+            self.lan.close()
         self.stop.set()
         self.root.destroy()

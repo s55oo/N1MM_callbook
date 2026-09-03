@@ -25,15 +25,20 @@ is live, otherwise the public /db/ page for the locator. The lookup
 engine, window and sources are in ``n1mm_callbook.py``. Lookups are
 cached in ``Callbooker_cache.json``.
 
+LAN cache sharing (UDP **6768**, on by default, ``lan_share=no`` to turn
+off) has every Callbooker on the LAN share resolved callsigns, so in a
+multi-op only one PC ever queries the callbook sites for a given call and
+the rest get it instantly. See ``dev/lan-cache-sharing.md``.
+
 Made by S55OO with AI assistance.
 
-Version: 1.1
+Version: 1.2
 
 Usage:
     python Callbooker.py [--port 12060] [--config Callbooker.cfg]
 """
 
-__version__ = "1.1"
+__version__ = "1.2"
 
 import ctypes
 import functools
@@ -228,6 +233,8 @@ class CallbookerApp(cb.CallbookApp):
     def _build(self):
         super()._build()
         extra = "  +  UDP {}".format(self.vhfctest_port) if self.vhfctest_port else ""
+        if getattr(self, "lan", None) is not None:
+            extra += "  +  LAN {}".format(self.lan_share_port)
         self.root.title(
             "{}  -  UDP {}{}  auto HF/VHF  v{}".format(
                 self.APP_TITLE, self.port, extra, self.VERSION

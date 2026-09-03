@@ -1,7 +1,8 @@
-# LAN cache sharing — design notes (not yet implemented)
+# LAN cache sharing
 
-**Status: design locked, not built.** Nothing in the code yet. This
-records the agreed design so it is ready to pick up.
+**Status: shipped in Callbooker 1.2.** The `LANShare` class in
+`n1mm_callbook.py` implements it; on by default, `lan_share=no` disables.
+Tests: `dev/test_lan_share.py`. This file is the design and rationale.
 
 ## Goal
 
@@ -52,12 +53,15 @@ Every datagram is JSON with a `cbshare` marker (protocol version). Any
 datagram on 6768 without it is ignored without a parse throw — stray LAN
 traffic can't break anything.
 
-**Entry packet** — the workhorse, carries one resolved callsign:
+**Entry packet** — the workhorse, carries one resolved callsign. `sources`
+is the per-source list exactly as `Callbooker_cache.json` stores it,
+reduced to `_CACHE_FIELDS` by `_lan_trim` (no QRZ login, no session key):
 
 ```json
 {"cbshare": 1, "call": "S55OO",
- "fields": { ...same shape as a Callbooker_cache.json entry... },
- "ts": 1735900000, "schema": 3}
+ "sources": [{"name": "...", "state": "...", "cqzone": "...",
+              "grid": "...", "country": "..."}, ...],
+ "ts": 1735900000.0, "schema": 2}
 ```
 
 **Call-request packet** — "does anyone have this call?", sent on a local
@@ -84,29 +88,34 @@ is:
 
 1. **Local cache**, fresh → render, done. Nothing broadcast (peers already
    have it, or will ask).
-2. **Local miss** → broadcast a **call-request packet** *and* schedule the
-   HTTP lookup a short **grace** later — the two run in parallel, the
-   grace just gives the LAN a head start:
-   - A peer with a fresh cache entry replies with an **entry packet**
-     (handled on the listener thread, not the 100 ms GUI poll). On
-     receipt: merge, render, **cancel the pending HTTP lookup — the
-     callbook servers are never queried**. This is the win for calls
-     *this* PC never worked but another PC did.
-   - No reply by the grace deadline → the HTTP lookup fires
-     (`_start_lookup`, QRZ / QRZCQ / HamQTH, exactly as today). A late LAN
-     reply after that is merged like any gossip.
-3. **After an HTTP resolve** → broadcast the **entry packet** (Tier 1
-   live sharing, below).
+2. **Local miss** → `_on_stable` broadcasts a **call-request packet**,
+   arms `_await_lan = call`, and schedules `_lan_grace_expired` for
+   `LAN_GRACE_MS` (50 ms) later:
+   - A peer with a fresh cache entry replies with an **entry packet**.
+     The listener thread appends it to `_lan_inbox`; `_lan_grace_expired`
+     drains that inbox itself (`_drain_lan_inbox`), so the reply is picked
+     up *within* the grace, not on the next 100 ms `_poll_inbox` tick. A
+     merged entry that answers `_await_lan` clears the flag and renders —
+     `_lan_grace_expired` then sees `_await_lan` gone and **does not start
+     the HTTP lookup**. This is the win for calls *this* PC never worked
+     but another PC did.
+   - No entry by the grace deadline → `_lan_grace_expired` calls
+     `_start_lookup` (QRZ / QRZCQ / HamQTH, exactly as before). A later
+     LAN entry is merged by `_poll_inbox` like any gossip, and re-rendered
+     only if no HTTP data is on screen yet.
+3. **After an HTTP resolve** → `_poll_inbox` calls `lan.broadcast_entry`
+   right after `cache.put` (Tier 1 live sharing, below).
 
-**Grace ≈ 50 ms.** On a wired LAN the wire RTT is sub-millisecond; the
-budget is a peer's thread wake-up + a dict lookup + the reply, single
-digit ms on a quiet gigabit segment. 50 ms is generous margin for a busy
-peer, Windows timer granularity and jitter while staying imperceptible —
-and because the HTTP lookup is only *scheduled*, not blocked on, even a
-full grace-period miss adds nothing beyond those 50 ms. The reply path
-must not go through the 100 ms `_poll_inbox` tick or that cadence, not the
-network, becomes the floor. If two peers both answer, the duplicate entry packets merge to a
-no-op.
+**Grace = `LAN_GRACE_MS` (50 ms).** On a wired LAN the wire RTT is
+sub-millisecond; the budget is a peer's thread wake-up + a dict lookup +
+the reply, single-digit ms on a quiet gigabit segment. 50 ms is generous
+margin for a busy peer, Windows timer granularity and jitter while staying
+imperceptible — and because the HTTP lookup is only *scheduled*, not
+blocked on, a full grace-period miss adds nothing beyond those 50 ms.
+`_lan_grace_expired` draining `_lan_inbox` directly is what keeps the
+100 ms poll cadence off the critical path. If two peers both answer, the
+second entry packet has an equal-or-older `ts` and `Cache.merge` makes it
+a no-op.
 
 ### Live sharing (Tier 1)
 
@@ -151,8 +160,12 @@ several PCs boot together):
   `ts`), so the redundancy of "everyone answers" is harmless.
 
 Realistic multi-op is 2–6 PCs and a few thousand calls → a full sync in
-~10 s. `since` is `0` on a cold start; a warm restart can set it to the
-newest local `ts` so peers only replay what is newer.
+~10 s. As built, `since` is always `0` (`request_sync` sends `"since": 0`)
+— `_serve_sync` still honours a non-zero `since` from the wire, so a
+warm-restart optimisation can be added later without a protocol change.
+
+`items_since` also drops anything past the `cache_days` freshness window,
+so a peer never replays entries the joiner would immediately prune.
 
 ## Security / safety
 
@@ -183,31 +196,45 @@ the existing 12060 / 6767 listeners. Notes:
   silently never arrive — no error, just no LAN-cached data.
 - The OS prompt cannot be pre-authorised or suppressed from inside the
   app; no manifest/code change helps.
-- README line to add when this ships (LAN-caching section): *"first run
-  may show a Windows Firewall prompt for port 6768 — allow it for Private
-  networks."* Same pattern as the VHFCtest4WIN 6767 note.
+- README covers it in section 1 ("LAN cache sharing (6768)") and the
+  config template.
 
-## Integration points (when implemented)
+## As built — code map
 
-- New config keys: `lan_share=yes` (default on), `lan_share_port=6768`.
-- A `LANShare` class using the existing socket/thread pattern: one
-  listener thread on 6768 → an inbox drained on the GUI thread in
-  `_poll_inbox` (same pattern as `_inbox` / `_v4w_inbox`), and a small
-  send helper.
-- Wire into `n1mm_callbook.py`'s lookup path: in `_on_stable`, on a local
-  cache miss send a call-request and `root.after(~50, _start_lookup)`;
-  an incoming entry packet for `self.current` renders and cancels that
-  pending `after`. Broadcast an entry packet from `_poll_inbox` once the
-  last slot lands after an HTTP resolve. Merge incoming entries through the
-  same freshness/schema gate as `Cache` load.
-- The listener thread must handle a reply directly (post + render), not
-  wait for the next 100 ms `_poll_inbox` — otherwise the poll cadence, not
-  the LAN, sets the grace floor.
-- The same listener thread answers a `req:"call"` packet (entry packet if
-  the call is fresh in `Cache`) and a `req:"sync"` packet (rate-limited
-  replay of `Cache` contents).
-- Tests in the `dev/test_render.py` style: the merge freshness/schema
-  logic, the grace-timer cancel-on-LAN-hit path, and the responder
-  rate/cap logic exercised headless, no sockets.
-- This is a **user-facing change** → full release ritual when it ships
-  (see `CLAUDE.md`).
+All in `n1mm_callbook.py` unless noted.
+
+- **Config** (`run()`): `lan_share` (default yes) and `lan_share_port`
+  (default `LAN_SHARE_PORT` = 6768) → passed to `CallbookApp.__init__` as
+  `lan_share_port` (0 = off).
+- **`LANShare`** — the socket + listener thread. `start()` binds
+  `("", port)` with `SO_REUSEADDR | SO_BROADCAST` (so several instances on
+  one PC can share the port) and returns False if it can't (feature then
+  stays off). `_send` fires one datagram to `255.255.255.255:<port>`;
+  on a single-subnet multi-op LAN that reaches every host, and the sender
+  also receives its own echo (harmless — `Cache.merge` no-ops it, and it
+  never self-answers a `req:"call"` because a cache miss is why it asked).
+  `close()` sets the stop event.
+- **`LANShare._handle`** dispatches by `cbshare` marker then `req`:
+  `"call"` → `_serve_call` (broadcast our entry if we have it fresh),
+  `"sync"` → `_serve_sync` (rate/interval/self-hold guarded → a
+  `_replay` thread: 0–500 ms stagger, `LAN_SYNC_RATE` pkt/s,
+  `LAN_SYNC_CAP` entries, newest first), otherwise an entry packet →
+  `_recv_entry` → `on_entry` (schema/ts validated).
+- **`Cache`** gained `put()` returning the stored `ts`, `merge()`
+  (newer-wins, returns stored?), `get_with_ts()`, `items_since()`.
+- **`CallbookApp`**: `self.lan` (LANShare or None), `self._lan_inbox`
+  (listener-thread → GUI hand-off list, like `_v4w_inbox`),
+  `self._await_lan` (callsign with an outstanding call-request).
+  `_queue_lan_entry` (listener callback, list append only),
+  `_drain_lan_inbox` (GUI: merge + conditional re-render), `_on_stable`
+  (LAN-first), `_lan_grace_expired` (grace deadline → drain, else
+  `_start_lookup`). `_poll_inbox` drains `_lan_inbox` every tick and
+  broadcasts after an HTTP resolve. `on_close` calls `lan.close()`.
+- **`CallbookerApp._build`** (`Callbooker.py`) adds `+ LAN <port>` to the
+  title bar when the feed is up.
+
+Tests: `dev/test_lan_share.py` — `Cache` helpers, `LANShare._handle`
+dispatch (driven with bytes, `_send` stubbed), and the app lookup order
+with a fake Tk root / canvas. `dev/lan_wire.py` is a real-UDP two-socket
+smoke test (broadcast an entry, ask the LAN for a call, see what each
+peer received) for confirming the wire works on a given LAN.

@@ -281,6 +281,13 @@ def main():
         "mode": "vhf", "feed": "vhfctest4win", "frequency_mhz": None,
         "source_labels": ("QRZ", "QRZCQ"),
     }
+    class FakeLabel:
+        def __init__(self):
+            self.texts = []
+
+        def configure(self, **kwargs):
+            self.texts.append(kwargs.get("text"))
+
     cached_app = cb.CallbookApp.__new__(cb.CallbookApp)
     cached_app.current = "S55OO"
     cached_app._lookup_generation = 7
@@ -290,6 +297,9 @@ def main():
     cached_app._await_lan = None
     cached_app._await_lan_ctx = None
     cached_app.lan = None
+    cached_app.call_label = FakeLabel()
+    cached_app._mqtt_error_seen = ""
+    cached_app._source_tag = None
     cached_renders = []
     cached_publishes = []
     cached_app._render_slots = lambda *args: cached_renders.append(args)
@@ -322,6 +332,8 @@ def main():
     live_app.lan = None
     live_app.mqtt = types.SimpleNamespace(error="")
     live_app._mqtt_error_seen = ""
+    live_app._source_tag = None
+    live_app.call_label = FakeLabel()
     live_app.cache = FakeCache()
     live_app.stop = threading.Event()
     live_app.stop.set()
@@ -359,8 +371,9 @@ def main():
     live_app.mqtt.error = ""
     live_app._poll_inbox()
     ok &= check(
-        "footer recovers after MQTT error clears",
-        live_app.call_label.texts[-1] == "S55OO" and live_app._mqtt_error_seen == "",
+        "footer recovers after MQTT error clears (with the temp source tag)",
+        live_app.call_label.texts[-1] == "S55OO · online"
+        and live_app._mqtt_error_seen == "",
     )
 
     import Callbooker as ckr

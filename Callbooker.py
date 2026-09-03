@@ -32,13 +32,13 @@ the rest get it instantly. See ``dev/lan-cache-sharing.md``.
 
 Made by S55OO with AI assistance.
 
-Version: 1.3
+Version: 1.4
 
 Usage:
     python Callbooker.py [--port 12060] [--config Callbooker.cfg]
 """
 
-__version__ = "1.3"
+__version__ = "1.4"
 
 import ctypes
 import functools

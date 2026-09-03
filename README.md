@@ -1,6 +1,6 @@
 # Callbooker – contest callbook for HF and VHF
 
-> **Version:** 1.3 · Made by **S55OO** with AI assistance.
+> **Version:** 1.4 · Made by **S55OO** with AI assistance.
 > · **Public domain** – see [LICENSE](LICENSE).
 
 A compact always-on-top window that listens to your logger's UDP broadcast
@@ -403,8 +403,13 @@ dev/*.py, dev/*.md      – logger-feed / VHFCtest4WIN notes and sniff tools
 
 Callbooker replaces the earlier separate apps (`n1mm_callbook` for HF,
 `VHFcallbook` for VHF, and before that `n1mm_VHFcallbook` /
-`VHFctest4WinCallbook`). All of their features are in `Callbooker` 1.3.
+`VHFctest4WinCallbook`). All of their features are in `Callbooker` 1.4.
 
+- **1.4** – **temporary diagnostic:** the footer shows how each callsign
+  resolved – `S55OO · online` (fetched now), `· LAN 6768` (a peer
+  answered), or `· cache` (already local) – for watching LAN cache
+  sharing work during a multi-op. Toggle `_SHOW_SOURCE_TAG` in
+  `n1mm_callbook.py`; a later version removes it.
 - **1.3** – optional **MQTT output**: one schema-versioned JSON document
   published after every completed lookup (cache hits included), with
   configurable broker, topic, QoS, retain, authentication, TLS, reconnect

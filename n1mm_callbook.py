@@ -16,7 +16,7 @@ the paid XML service when credentials are configured, else its public
 Made by S55OO with AI assistance.
 """
 
-__version__ = "1.3"
+__version__ = "1.4"
 
 import argparse
 import base64
@@ -39,7 +39,7 @@ import xml.etree.ElementTree as ET
 
 from mqtt_client import MqttPublisher, lookup_payload
 
-USER_AGENT = "Mozilla/5.0 Callbooker/1.3"
+USER_AGENT = "Mozilla/5.0 Callbooker/1.4"
 HAMQTH_UA = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
     "(KHTML, like Gecko) Chrome/126.0 Safari/537.36"
@@ -47,6 +47,12 @@ HAMQTH_UA = (
 
 DEFAULT_PORT = 12060
 DEFAULT_CACHE_DAYS = 30
+
+# TEMPORARY diagnostic: append " - online" / " - LAN 6768" / " - cache" to
+# the footer callsign so you can see, during a multi-op test, how each
+# lookup resolved. Set to False (or delete _show_source and its callers)
+# to remove.
+_SHOW_SOURCE_TAG = True
 
 # LAN cache sharing (see dev/lan-cache-sharing.md). A dedicated UDP port -
 # NOT 12060, which is the loggers' own multi-op network port - carries one
@@ -1309,6 +1315,7 @@ class CallbookApp:
         self._lan_inbox = []
         self._await_lan = None
         self._await_lan_ctx = None
+        self._source_tag = None  # TEMPORARY: last resolution source (see _SHOW_SOURCE_TAG)
         # Start-up self-test (see _start_precheck). Empty call = disabled.
         self._selftest_call = normalize_call(selftest_call)
         self._precheck = None       # per source: None = pending, (status, ms)
@@ -1494,6 +1501,7 @@ class CallbookApp:
             self._await_lan = None
             self._slots = None
             self._render_slots(cur, list(cached), set())
+            self._show_source("LAN 6768")
             if awaiting:
                 # A peer answered instead of the websites - to an MQTT
                 # consumer this is a cache hit.
@@ -1519,6 +1527,16 @@ class CallbookApp:
             "frequency_mhz": getattr(self, "_result_frequency_mhz", None),
             "source_labels": tuple(self.source_labels),
         }
+
+    def _show_source(self, tag):
+        # TEMPORARY diagnostic (see _SHOW_SOURCE_TAG): show how the current
+        # call resolved - "online" (fetched now), "LAN 6768" (a peer),
+        # "cache" (already local). Yields to an MQTT error in the footer.
+        if not _SHOW_SOURCE_TAG:
+            return
+        self._source_tag = tag
+        if self.current and not self._mqtt_error_seen:
+            self.call_label.configure(text="{} · {}".format(self.current, tag))
 
     def _handle_call(self, call):
         # Shared path for a worked callsign from any feed (the N1MM
@@ -1551,6 +1569,7 @@ class CallbookApp:
         if sources is not None:
             self._slots = None
             self._render_slots(call, list(sources), set())
+            self._show_source("cache")
             self._publish_lookup_result(
                 call, list(sources), cached=True, context=context
             )
@@ -1581,11 +1600,13 @@ class CallbookApp:
         self._start_lookup(call, generation, context)
 
     def _show_call(self, call):
+        self._source_tag = None  # TEMPORARY: reset the resolution tag
         self.call_label.configure(text=call)
         sources = self._cached_sources(call)
         if sources is not None:
             self._slots = None
             self._render_slots(call, list(sources), set())
+            self._show_source("cache")
         else:
             # cleared visually while waiting for the debounce / lookup
             self.canvas.configure(bg=COLOR_ACTIVE)
@@ -1763,7 +1784,10 @@ class CallbookApp:
             self.call_label.configure(text=prefix + mqtt_error)
         elif not mqtt_error and self._mqtt_error_seen:
             self._mqtt_error_seen = ""
-            self.call_label.configure(text=self.current or "MQTT connected")
+            restore = self.current or "MQTT connected"
+            if self.current and self._source_tag:  # TEMPORARY
+                restore = "{} · {}".format(self.current, self._source_tag)
+            self.call_label.configure(text=restore)
         if self._precheck_inbox:
             while self._precheck_inbox:
                 i, status, ms = self._precheck_inbox.pop(0)
@@ -1799,6 +1823,7 @@ class CallbookApp:
                         call, list(self._slots), cached=False,
                         context=self._active_lookup_context,
                     )
+                    self._show_source("online")  # TEMPORARY
                 self._render_slots(call, self._slots, self._pending_inds)
         except Exception:
             pass

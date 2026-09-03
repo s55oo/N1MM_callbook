@@ -148,6 +148,12 @@ unchanged.
 - **Cache key is the bare call** — LAN sharing depends on it. The HF↔VHF
   slot-count mismatch is handled by `_cached_sources` rejecting a
   wrong-length entry, *not* by a composite key.
+- **`_SHOW_SOURCE_TAG` is a TEMPORARY diagnostic** (added 1.4): the footer
+  gets `· online` / `· LAN 6768` / `· cache` via `_show_source()`, called
+  from `_on_stable`, `_drain_lan_inbox`, `_poll_inbox` and `_show_call`.
+  To remove: set the flag `False`, or delete `_show_source`, `_source_tag`,
+  its four callers, and the tag-restore line in the `_poll_inbox` MQTT
+  clear branch. `test_lan_share` / `test_mqtt` assert the tag text.
 - **`self.VERSION`, not module `__version__`.** `_build` reads
   `self.VERSION`; `CallbookerApp` sets it from its own `__version__`.
 - **Bump `CACHE_SCHEMA`** only when an old entry would now display *wrong*

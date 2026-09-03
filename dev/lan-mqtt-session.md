@@ -27,6 +27,7 @@ Where the 1.2–1.6 work was done, for `claude --resume`. The design and
 | **1.7** | | Footer **info line** made permanent: `<call> · local / LAN / online` (`_set_resolved_from` / `_footer_text`), on the user's request |
 | **1.8** | | Cache freshness window → **3 days, default and hard cap** (`clamp_cache_days`, `MAX_CACHE_DAYS`), on the user's request |
 | **1.9** | | **Update check** (`updater.py`): daily GitHub check, title-bar nudge, `?`-icon downloads `Callbooker.exe.new`, `apply_pending()` swaps on next launch. On by default (user's call); download+apply-on-restart (not auto-relaunch). |
+| **1.10** | | Update state also shown in the idle footer (`_update_footer_line`), not just the title. Cut so the user could test a real v1.9→v1.10 self-update. |
 
 ## The multi-homed broadcast bug (1.5)
 

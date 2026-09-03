@@ -16,7 +16,7 @@ the paid XML service when credentials are configured, else its public
 Made by S55OO with AI assistance.
 """
 
-__version__ = "1.9"
+__version__ = "1.10"
 
 import argparse
 import base64
@@ -40,7 +40,7 @@ import xml.etree.ElementTree as ET
 import updater
 from mqtt_client import MqttPublisher, lookup_payload
 
-USER_AGENT = "Mozilla/5.0 Callbooker/1.9"
+USER_AGENT = "Mozilla/5.0 Callbooker/1.10"
 HAMQTH_UA = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
     "(KHTML, like Gecko) Chrome/126.0 Safari/537.36"
@@ -1445,17 +1445,25 @@ class CallbookApp:
             self.APP_TITLE, self.port, self.VERSION
         )
 
-    def _update_suffix(self):
-        # Appended to the title bar while a newer release is known.
-        if not self._update:
-            return ""
-        tag = self._update[0]
-        label = {
+    def _update_label(self):
+        # Human text for the current update state (title bar + footer).
+        tag = self._update[0] if self._update else "?"
+        return {
             "getting": "downloading " + tag + " ...",
             "ready": tag + " downloaded - restart Callbooker",
             "failed": tag + " download failed - click ? for releases",
         }.get(self._update_state, "update " + tag + " available - click ?")
-        return "   ·   " + label
+
+    def _update_suffix(self):
+        # Appended to the title bar while a newer release is known.
+        return "   ·   " + self._update_label() if self._update else ""
+
+    def _update_footer_line(self):
+        # Shown in the footer while the window is idle and an update is known.
+        if self._update_state == "":
+            return "Callbooker {} available - click the ? icon".format(
+                self._update[0])
+        return self._update_label()
 
     def _refresh_title(self):
         self.root.title(self._title() + self._update_suffix())
@@ -1899,21 +1907,21 @@ class CallbookApp:
             self._drain_lan_inbox()  # merge cache entries shared by LAN peers
         except Exception:
             pass
-        # GitHub-release update check: pick up the result, and keep the
-        # title-bar suffix in step with the download state (a worker thread
-        # flips _update_state).
+        # GitHub-release update check: pick up the result and keep the
+        # title-bar suffix + the idle footer line in step with the download
+        # state (a worker thread flips _update_state).
         if self._update_inbox:
             self._update = self._update_inbox[-1]
             self._update_inbox.clear()
-            if not self.current:
-                self.call_label.configure(
-                    text="Callbooker {} available - click the ? icon".format(
-                        self._update[0])
-                )
         _title_key = (bool(self._update), self._update_state)
         if _title_key != getattr(self, "_title_key", None):
             self._title_key = _title_key
             self._refresh_title()
+        if (self._update and not self.current and not self._mqtt_error_seen
+                and not self._precheck_active):
+            want = self._update_footer_line()
+            if self.call_label.cget("text") != want:
+                self.call_label.configure(text=want)
         if self._v4w_status:
             msg, self._v4w_status = self._v4w_status, None
             if not self.current:  # don't clobber a lookup already on screen

@@ -60,26 +60,59 @@ traffic can't break anything.
  "ts": 1735900000, "schema": 3}
 ```
 
+**Call-request packet** — "does anyone have this call?", sent before
+querying the external servers:
+
+```json
+{"cbshare": 1, "req": "call", "call": "S55OO"}
+```
+
 **Sync-request packet** — sent once on startup:
 
 ```json
 {"cbshare": 1, "req": "sync", "since": 0}
 ```
 
-That is the whole protocol. No TCP, no ephemeral ports, no gzip, no
-fragment reassembly — each callsign is its own small (~200 byte) packet.
+That is the whole protocol — one entry packet plus two one-line requests.
+No TCP, no ephemeral ports, no gzip, no fragment reassembly — each
+callsign is its own small (~200 byte) packet.
+
+### Lookup order — LAN before the callbook servers
+
+When a call is committed (after the existing 300 ms debounce), the order
+is:
+
+1. **Local cache**, fresh → render, done. Nothing broadcast (peers already
+   have it, or will ask).
+2. **Local miss** → broadcast a **call-request packet** and start a short
+   grace timer (~150 ms — a LAN round trip is < 1 ms, a peer only has to
+   look up and reply).
+   - A peer with a fresh cache entry for that call replies with a normal
+     **entry packet**. On receipt: merge, render, **done — the external
+     servers are never queried**. This is the win for calls *this* PC
+     never worked but another PC did.
+   - Grace timer fires with no answer → fall through to `_start_lookup`
+     (QRZ / QRZCQ / HamQTH over HTTP, exactly as today).
+3. **After an HTTP resolve** → broadcast the **entry packet** (Tier 1
+   live sharing, below).
+
+The ~150 ms grace is roughly the current median HTTP fill time, so a LAN
+hit is about as fast as a cache hit and a LAN miss costs one barely
+noticeable pause. If two peers both answer a call-request, the duplicate
+entry packets merge to a no-op.
 
 ### Live sharing (Tier 1)
 
-When an instance finishes resolving a call — from its own cache **or** a
-fresh fetch — it broadcasts one **entry packet**.
+An instance broadcasts one **entry packet** when it resolves a call over
+HTTP, and in reply to a **call-request packet** for a call it has fresh in
+cache. A plain local cache hit is **not** broadcast — nobody asked.
 
 Every instance also listens. On receiving an entry packet: if it is newer
 than the local cache entry (or the entry is missing), merge it in, reusing
 the exact freshness / `CACHE_SCHEMA` logic already used for
 `Callbooker_cache.json`. **Received entries are not re-broadcast** (only
-the resolver that actually fetched broadcasts) — O(1) messages per lookup,
-no storms, no O(n²).
+the resolver that actually fetched, or a peer answering a request,
+sends) — O(1) messages per lookup, no storms, no O(n²).
 
 Trust a **local fresh** cache entry over an **older** broadcast for the
 same call — a real re-work (operator fixed a busted call) must win over a
@@ -154,14 +187,16 @@ the existing 12060 / 6767 listeners. Notes:
   listener thread on 6768 → an inbox drained on the GUI thread in
   `_poll_inbox` (same pattern as `_inbox` / `_v4w_inbox`), and a small
   send helper.
-- Wire into `n1mm_callbook.py`'s cache path: broadcast an entry packet
-  from wherever a lookup completes and the cache is updated
-  (`_poll_inbox` after the last slot lands; also on a cache hit in
-  `_on_stable`). Merge incoming entries through the same freshness/schema
-  gate as `Cache` load.
-- The Tier 2 responder is the same listener thread reacting to a
-  `req:"sync"` packet with a rate-limited replay of `Cache` contents.
+- Wire into `n1mm_callbook.py`'s lookup path: in `_on_stable`, on a local
+  cache miss send a call-request and wait the ~150 ms grace before
+  `_start_lookup`; broadcast an entry packet from `_poll_inbox` once the
+  last slot lands after an HTTP resolve. Merge incoming entries through the
+  same freshness/schema gate as `Cache` load.
+- The same listener thread answers a `req:"call"` packet (entry packet if
+  the call is fresh in `Cache`) and a `req:"sync"` packet (rate-limited
+  replay of `Cache` contents).
 - Tests in the `dev/test_render.py` style: the merge freshness/schema
-  logic and the responder rate/cap logic exercised headless, no sockets.
+  logic, the grace-timer fall-through, and the responder rate/cap logic
+  exercised headless, no sockets.
 - This is a **user-facing change** → full release ritual when it ships
   (see `CLAUDE.md`).

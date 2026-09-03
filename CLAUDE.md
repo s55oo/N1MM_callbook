@@ -178,6 +178,9 @@ docs / `dev/` / comment change is committed and pushed only.
   bare instance; `vh` is a `CallbookerApp` switched to the VHF view.
 - `dev/bench_latency.py` — per-source and end-to-end lookup latency
   (reads QRZ creds from `Callbooker.cfg` if present).
+- `dev/logger-feeds.md` — every logger feed (N1MM, DXLog.net,
+  VHFCtest4WIN) and the step-by-step method for adding another; the
+  WriteLog to-do lives here.
 - `dev/vhfctest4win-*.md`, `dev/sniff_multi.py`, `dev/test_rcvall2.py`,
   `dev/probe_window.py`, `dev/vhfctest4win-captures/` — the VHFCtest4WIN
   6767 reverse-engineering (protocol notes, sniff tools, packet captures).

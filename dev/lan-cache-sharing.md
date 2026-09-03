@@ -60,8 +60,8 @@ traffic can't break anything.
  "ts": 1735900000, "schema": 3}
 ```
 
-**Call-request packet** — "does anyone have this call?", sent before
-querying the external servers:
+**Call-request packet** — "does anyone have this call?", sent on a local
+cache miss in parallel with a grace-delayed HTTP lookup:
 
 ```json
 {"cbshare": 1, "req": "call", "call": "S55OO"}
@@ -84,22 +84,29 @@ is:
 
 1. **Local cache**, fresh → render, done. Nothing broadcast (peers already
    have it, or will ask).
-2. **Local miss** → broadcast a **call-request packet** and start a short
-   grace timer (~150 ms — a LAN round trip is < 1 ms, a peer only has to
-   look up and reply).
-   - A peer with a fresh cache entry for that call replies with a normal
-     **entry packet**. On receipt: merge, render, **done — the external
-     servers are never queried**. This is the win for calls *this* PC
-     never worked but another PC did.
-   - Grace timer fires with no answer → fall through to `_start_lookup`
-     (QRZ / QRZCQ / HamQTH over HTTP, exactly as today).
+2. **Local miss** → broadcast a **call-request packet** *and* schedule the
+   HTTP lookup a short **grace** later — the two run in parallel, the
+   grace just gives the LAN a head start:
+   - A peer with a fresh cache entry replies with an **entry packet**
+     (handled on the listener thread, not the 100 ms GUI poll). On
+     receipt: merge, render, **cancel the pending HTTP lookup — the
+     callbook servers are never queried**. This is the win for calls
+     *this* PC never worked but another PC did.
+   - No reply by the grace deadline → the HTTP lookup fires
+     (`_start_lookup`, QRZ / QRZCQ / HamQTH, exactly as today). A late LAN
+     reply after that is merged like any gossip.
 3. **After an HTTP resolve** → broadcast the **entry packet** (Tier 1
    live sharing, below).
 
-The ~150 ms grace is roughly the current median HTTP fill time, so a LAN
-hit is about as fast as a cache hit and a LAN miss costs one barely
-noticeable pause. If two peers both answer a call-request, the duplicate
-entry packets merge to a no-op.
+**Grace ≈ 30 ms.** On a wired LAN the wire RTT is sub-millisecond; the
+budget is a peer's thread wake-up + a dict lookup + the reply, single
+digit ms on a quiet gigabit segment. 30 ms is comfortable margin for a
+busy peer and jitter while staying imperceptible — and because the HTTP
+lookup is only *scheduled*, not blocked on, even a full grace-period miss
+adds nothing beyond those 30 ms. The reply path must not go through the
+100 ms `_poll_inbox` tick or that cadence, not the network, becomes the
+floor. If two peers both answer, the duplicate entry packets merge to a
+no-op.
 
 ### Live sharing (Tier 1)
 
@@ -188,15 +195,19 @@ the existing 12060 / 6767 listeners. Notes:
   `_poll_inbox` (same pattern as `_inbox` / `_v4w_inbox`), and a small
   send helper.
 - Wire into `n1mm_callbook.py`'s lookup path: in `_on_stable`, on a local
-  cache miss send a call-request and wait the ~150 ms grace before
-  `_start_lookup`; broadcast an entry packet from `_poll_inbox` once the
+  cache miss send a call-request and `root.after(~30, _start_lookup)`;
+  an incoming entry packet for `self.current` renders and cancels that
+  pending `after`. Broadcast an entry packet from `_poll_inbox` once the
   last slot lands after an HTTP resolve. Merge incoming entries through the
   same freshness/schema gate as `Cache` load.
+- The listener thread must handle a reply directly (post + render), not
+  wait for the next 100 ms `_poll_inbox` — otherwise the poll cadence, not
+  the LAN, sets the grace floor.
 - The same listener thread answers a `req:"call"` packet (entry packet if
   the call is fresh in `Cache`) and a `req:"sync"` packet (rate-limited
   replay of `Cache` contents).
 - Tests in the `dev/test_render.py` style: the merge freshness/schema
-  logic, the grace-timer fall-through, and the responder rate/cap logic
-  exercised headless, no sockets.
+  logic, the grace-timer cancel-on-LAN-hit path, and the responder
+  rate/cap logic exercised headless, no sockets.
 - This is a **user-facing change** → full release ritual when it ships
   (see `CLAUDE.md`).

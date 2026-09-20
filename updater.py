@@ -196,10 +196,15 @@ def apply_pending():
         # Callbooker.exe is a windowed (no-console) build; relaunch it with
         # no std handles and no new console so nothing flashes.
         flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+        # A --onefile exe that relaunches itself must tell PyInstaller the
+        # child is a fresh app: otherwise it inherits our _MEI temp dir,
+        # which our own bootloader deletes as we exit - the new instance
+        # then dies intermittently (about half the time in testing).
+        env = dict(os.environ, PYINSTALLER_RESET_ENVIRONMENT="1")
         subprocess.Popen(
             [exe] + sys.argv[1:], close_fds=True, creationflags=flags,
             stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL, env=env,
         )
     except OSError:
         return False

@@ -1,6 +1,6 @@
 # Callbooker – contest callbook for HF and VHF
 
-> **Version:** 1.10 · Made by **S55OO** with AI assistance.
+> **Version:** 1.11 · Made by **S55OO** with AI assistance.
 > · **Public domain** – see [LICENSE](LICENSE).
 
 A compact always-on-top window that listens to your logger's UDP broadcast
@@ -489,8 +489,16 @@ dev/*.py, dev/*.md      – logger-feed / VHFCtest4WIN notes and sniff tools
 
 Callbooker replaces the earlier separate apps (`n1mm_callbook` for HF,
 `VHFcallbook` for VHF, and before that `n1mm_VHFcallbook` /
-`VHFctest4WinCallbook`). All of their features are in `Callbooker` 1.10.
+`VHFctest4WinCallbook`). All of their features are in `Callbooker` 1.11.
 
+- **1.11** – **antivirus false positive fixed + reliable self-update.** The
+  release `Callbooker.exe` is now built by GitHub Actions with the
+  PyInstaller bootloader compiled from source, which stops Windows Defender
+  reporting it as `Trojan:Win32/Wacatac.B!ml` (a false positive on the
+  prebuilt bootloader). Also fixes the updater's relaunch: after swapping in
+  a downloaded update the new instance sometimes died silently (it inherited
+  PyInstaller's temp folder from the exiting one) – it now starts cleanly
+  every time. No behaviour change otherwise.
 - **1.10** – the update state (available / downloading / downloaded –
   restart) now also shows in the footer while the window is idle, not
   only in the title bar.

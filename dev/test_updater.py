@@ -132,6 +132,38 @@ def swap_tests():
     return ok
 
 
+def apply_pending_tests():
+    """The relaunch must reset PyInstaller's environment (see updater)."""
+    ok = True
+    import subprocess
+    d = tempfile.mkdtemp()
+    exe = os.path.join(d, "Callbooker.exe")
+    open(exe, "wb").write(b"OLD")
+    open(exe + ".new", "wb").write(b"NEW")
+    seen = {}
+
+    class FakePopen:
+        def __init__(self, args, **kw):
+            seen["args"], seen["env"] = args, kw.get("env")
+
+    real = (up.is_frozen, sys.executable, subprocess.Popen)
+    up.is_frozen = lambda: True
+    sys.executable = exe
+    subprocess.Popen = FakePopen
+    try:
+        ok &= check("apply_pending relaunches (True)", up.apply_pending(), True)
+        ok &= check("relaunch targets the swapped-in exe", seen["args"][0], exe)
+        ok &= check("new exe is in place", open(exe, "rb").read(), b"NEW")
+        ok &= check("relaunch env resets PyInstaller",
+                    (seen["env"] or {}).get("PYINSTALLER_RESET_ENVIRONMENT"), "1")
+        ok &= check("relaunch env keeps the rest of os.environ",
+                    all(seen["env"].get(k) == v for k, v in os.environ.items()
+                        if k != "PYINSTALLER_RESET_ENVIRONMENT"), True)
+    finally:
+        up.is_frozen, sys.executable, subprocess.Popen = real
+    return ok
+
+
 def main():
     ok = True
     print("version_tuple")
@@ -142,6 +174,8 @@ def main():
     ok &= download_tests()
     print("_swap()")
     ok &= swap_tests()
+    print("apply_pending()")
+    ok &= apply_pending_tests()
     print("\n" + ("ALL PASS" if ok else "SOME FAILED"))
     sys.exit(0 if ok else 1)
 

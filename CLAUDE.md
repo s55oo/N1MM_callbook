@@ -197,6 +197,23 @@ plain text. Only `Callbooker.cfg.template` (placeholder) is tracked.
 
 ## Build
 
+**Release exe = the GitHub Actions build**, not a local one.
+`.github/workflows/build-exe.yml` (run it from the Actions tab, or it runs
+on a `v*` tag push) builds `Callbooker.spec` on a clean `windows-latest`
+runner with the **PyInstaller bootloader compiled from source**
+(`pip install --no-binary pyinstaller --no-deps`, MSVC on the runner),
+prints the exe's SHA-256 and a Defender scan in the run summary/log, and
+uploads `dist/Callbooker.exe` as the `Callbooker.exe` artifact. Why: the
+prebuilt PyInstaller bootloader is what AV engines fingerprint - a
+`--onefile` exe built with it was flagged `Trojan:Win32/Wacatac.B!ml`
+(false positive) on download; the source-compiled one runs clean. Don't
+ship a locally built exe unless it was built the same way. `upx=False` in
+the spec (packing is another common trigger). Still unsigned - SignPath
+Foundation (free for OSS) is the next step if it ever gets flagged again.
+
+Local build (dev / quick test only - needs a C compiler for the
+source-built bootloader; without one you get the flag-prone prebuilt one):
+
 ```bat
 python -m pip install -r requirements.txt
 python -m PyInstaller --onefile --windowed --name Callbooker --manifest manifest.xml --hidden-import paho.mqtt.client --noconfirm Callbooker.py
@@ -216,7 +233,9 @@ docs / `dev/` / comment change is committed and pushed only.
 1. Bump `__version__` in `Callbooker.py`, and `__version__` + `USER_AGENT`
    in `n1mm_callbook.py` (keep them the same number).
 2. README: version banner + a new entry at the top of `## 7. Changelog`.
-3. Rebuild `Callbooker.exe`, copy to repo root.
+3. Run the **Build Callbooker.exe** workflow on the final commit, download
+   its artifact, check the Defender line in the log, copy the exe to the
+   repo root. Attach *that* file to the release (step 7).
 4. `git grep` for your QRZ username / password → confirm nothing real
    reached a tracked file.
 5. Commit straight to `main` (no branch).
@@ -227,6 +246,9 @@ docs / `dev/` / comment change is committed and pushed only.
    `Callbooker.exe`, `Callbooker.cfg.template` and `LICENSE`.
 
 ## dev/
+
+- `.github/workflows/build-exe.yml` — the release-exe build (see Build).
+  Not under `dev/`, listed here so it isn't missed.
 
 - `dev/test_render.py` — headless render-logic tests (fake canvas + a
   withdrawn Tk root for font metrics, no network). `make(cls)` builds a

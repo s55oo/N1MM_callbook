@@ -193,6 +193,19 @@ Callbooker), run `python dev/lan_probe.py listen` on one PC and
 `Callbooker.exe` prompts for **UAC** once when VHFCtest4WIN is already
 running (see section 1).
 
+**Windows Defender / antivirus flags the exe?** Unsigned PyInstaller
+executables are sometimes reported as `Trojan:Win32/Wacatac.B!ml` – a
+machine-learning **false positive**, not a signature match. The released
+`Callbooker.exe` is built in public by GitHub Actions
+([workflow](.github/workflows/build-exe.yml)) with the PyInstaller
+bootloader compiled from source, which avoids the detection; the build's
+SHA-256 is in the run summary and on the release page, so you can check
+your download. If your AV still complains, restore the file from Protection
+history and add an exclusion, [report it as a false
+positive](https://www.microsoft.com/wdsi/filesubmission), or run from
+source (`pythonw Callbooker.py`) – the whole program is plain Python you can
+read.
+
 Arguments:
 
 ```
@@ -412,8 +425,19 @@ to GitHub, nothing else). It never interrupts a lookup. Set
 
 ## 5. Building the standalone EXE (for PCs without Python)
 
-Requires Python + PyInstaller + the runtime dependency (`paho-mqtt`, for
-the optional MQTT output – bundled into the EXE):
+**Releases** are built by the **Build Callbooker.exe** GitHub Actions
+workflow (`.github/workflows/build-exe.yml`, run from the *Actions* tab):
+a clean Windows runner, PyInstaller with its bootloader **compiled from
+source** (this is what stops the antivirus false positive), the exe
+uploaded as a run artifact with its SHA-256.
+
+To build **locally** you need Python + PyInstaller + the runtime
+dependency (`paho-mqtt`, for the optional MQTT output – bundled into the
+EXE). A local build uses PyInstaller's prebuilt bootloader, which some
+antivirus engines flag; to compile the bootloader yourself as well, install
+a C compiler (Visual Studio Build Tools) and
+`pip install --force-reinstall --no-binary pyinstaller --no-deps pyinstaller`
+first.
 
 ```bat
 python -m pip install -r requirements.txt pyinstaller
@@ -442,6 +466,7 @@ mqtt_client.py          – optional reconnecting MQTT publisher (paho-mqtt)
 updater.py              – GitHub-release update check + self-swap (stdlib)
 requirements.txt        – Python runtime dependency (paho-mqtt)
 Callbooker.spec         – PyInstaller build settings
+.github/workflows/build-exe.yml – release build of the exe (GitHub Actions)
 manifest.xml            – PyInstaller manifest (common controls)
 Callbooker_cache.json   – local lookup cache          (auto-created, gitignored)
 Callbooker_window.json  – last window position + view (auto-created, gitignored)

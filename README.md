@@ -8,7 +8,9 @@ and looks up the callsign you are working. **Every source is queried in
 parallel** and **all** of its values are shown side by side, so when the
 sources disagree the wrong one stands out and you pick the right value for
 the exchange. When they all agree the row collapses to a single value in a
-larger green font – a quick "you can trust this".
+larger font, coloured by how many sources match: **green** when three agree
+(QRZ included) – a quick "you can trust this" – **yellow** when two agree and
+one differs, white when they all differ.
 
 It listens on **two feeds at once** and picks the right view per callsign:
 
@@ -28,7 +30,8 @@ pre-log check – no switching apps or modes.
 | ![Callbooker, HF view](docs/callbooker-hf.png) | ![Callbooker, VHF view](docs/callbooker-vhf.png) |
 
 Both shots show the collapsed all-agree state – every source returned the
-same value, so the row is a single larger green token.
+same value, so the row is a single larger green token. (Two matching sources
+out of three would show in yellow, with every slot visible.)
 
 ### Sources
 

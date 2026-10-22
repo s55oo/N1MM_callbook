@@ -9,7 +9,8 @@ One always-on-top Tkinter window that listens to a logger's UDP broadcast
 and looks up the callsign being worked. Every source is queried **in
 parallel** and *all* of its values are shown side by side, so a
 disagreement is obvious and the operator picks the right one. When they
-agree the row collapses to one larger green token.
+agree the row collapses to one larger token: green when three sources
+match, yellow when two match, white when they all differ.
 
 **Two files:**
 
@@ -103,8 +104,12 @@ word only** (`_source_field(..., "name")` → `min(..., key=len).split()[0]`).
 `_is_dx` + `DX_COUNTRY` would add `name (country)` — but Callbooker keeps
 `DX_COUNTRY` False, so the name stays bare. Slots joined by `SLOT_SEP`;
 empty slot `·` (`SLOT_EMPTY`), pending `…` (`SLOT_PENDING`). `all_done` +
-every real value equal (≥2) → light-green fill (`agree`); + `COLLAPSE_ON_AGREE`
-(True on the base) → the value shown once instead of joined. `_font_for`
+every real value equal (≥2) → `agree`; + `COLLAPSE_ON_AGREE` (True on the
+base) → the value shown once instead of joined. The fill colour comes from
+`top`, the size of the biggest group of equal real values, once `all_done`:
+`top >= 3` → `TEXT_AGREE` (green), `top == 2` → `TEXT_PARTIAL` (yellow),
+else white. So a 2-of-3 match is yellow and keeps every slot visible, and a
+two-source result (HF without a QRZ login) tops out at yellow. `_font_for`
 walks `FONT_LADDER` (26 … 12) and returns the first size whose
 `tkfont.Font.measure(text)` fits the canvas width (live width once mapped,
 `winfo_reqwidth` before) — `Font`s cached in `self._font_cache`; canvas is
@@ -131,7 +136,7 @@ SLOT_FIELDS   # HF ("state","cqzone");  VHF ("grid",)   — _apply_mode swaps at
 SLOT_SEP      # HF " " (name has " - " after it);  VHF " - "
 SHOW_NAME     # True — first name only, printed once in front
 DX_COUNTRY    # base True; CallbookerApp False (both views)
-COLLAPSE_ON_AGREE  # True on the base — a unanimous result collapses to one big green token
+COLLAPSE_ON_AGREE  # True on the base — a unanimous result collapses to one big token (green if 3 match, yellow if 2)
 LOOKUP_CHAIN  # the free sources (qrzcq, hamqth); a QRZ slot is prepended by __init__ / _apply_mode
 QRZ_WEB_FALLBACK  # base False (QRZ slot only with creds); CallbookerApp _apply_mode adds a web-only QRZ in the VHF view
 VHFCTEST_CAPABLE  # True on CallbookerApp — lets run() wire the 6767 listener
@@ -244,12 +249,19 @@ docs / `dev/` / comment change is committed and pushed only.
    `gh auth login`), tag `main`, then
    `gh release create v<X.Y> --verify-tag --latest` attaching
    `Callbooker.exe`, `Callbooker.cfg.template` and `LICENSE`.
+   Shortcut on Windows: `dev\release.bat <X.Y>` (`dev/release.ps1`) does the
+   tag, the draft-safe create/upload and the publish-as-latest in one go
+   (`-Download` re-fetches the exe from the Actions run set as `-RunId`;
+   run it from the repo root). It exists
+   because `gh release view/edit` cannot see draft releases by tag.
 
 ## dev/
 
 - `.github/workflows/build-exe.yml` — the release-exe build (see Build).
   Not under `dev/`, listed here so it isn't missed.
 
+- `dev/release.ps1` / `dev/release.bat` — one-command release publisher
+  (see the release ritual, step 7).
 - `dev/test_render.py` — headless render-logic tests (fake canvas + a
   withdrawn Tk root for font metrics, no network). `make(cls)` builds a
   bare instance; `vh` is a `CallbookerApp` switched to the VHF view.

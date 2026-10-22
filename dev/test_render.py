@@ -165,12 +165,19 @@ def main():
     # agreement colour
     ok &= check("VHF all agree -> green text",
                 rf(vh, [{"grid": "KN04AX"}] * 3), cb.TEXT_AGREE)
-    ok &= check("VHF disagree -> default text",
-                rf(vh, [{"grid": "KN04AX"}, {"grid": "KN04BX"}, {"grid": "KN04AX"}]), cb.TEXT_DEFAULT)
+    ok &= check("VHF 2 of 3 match -> yellow text",
+                rf(vh, [{"grid": "KN04AX"}, {"grid": "KN04BX"}, {"grid": "KN04AX"}]), cb.TEXT_PARTIAL)
+    ok &= check("VHF all different -> default text",
+                rf(vh, [{"grid": "KN04AX"}, {"grid": "KN04BX"}, {"grid": "KN04CX"}]), cb.TEXT_DEFAULT)
+    ok &= check("VHF only 2 sources, both match -> yellow text",
+                rf(vh, [{"grid": "KN04AX"}] * 2), cb.TEXT_PARTIAL)
     ok &= check("VHF one still pending -> not green yet",
                 rf(vh, [{"grid": "KN04AX"}, {"grid": "KN04AX"}, None], {2}), cb.TEXT_DEFAULT)
     ok &= check("HF all agree -> green text", rf(hf, [US, US2, US]), cb.TEXT_AGREE)
-    ok &= check("HF one source lacks zone -> default text", rf(hf, [US, USnz, US]), cb.TEXT_DEFAULT)
+    ok &= check("HF one source lacks zone (2 of 3 match) -> yellow text",
+                rf(hf, [US, USnz, US]), cb.TEXT_PARTIAL)
+    ok &= check("HF all three differ -> default text",
+                rf(hf, [US, USct, USnz]), cb.TEXT_DEFAULT)
 
     # cache schema: an entry without the current version is refetched
     p = tempfile.mktemp(suffix=".json")

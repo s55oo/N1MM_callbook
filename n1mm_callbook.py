@@ -73,7 +73,8 @@ HELP_ICON_B64 = (
 COLOR_IDLE = "#3a3a3a"
 COLOR_ACTIVE = "#1f6feb"
 TEXT_DEFAULT = "white"
-TEXT_AGREE = "#b9f5b0"  # very light green: every source returned the same value
+TEXT_AGREE = "#b9f5b0"  # very light green: three sources returned the same value
+TEXT_PARTIAL = "#ffe066"  # yellow: two sources returned the same value
 SLOT_EMPTY = "·"   # a source answered but had no value ("·")
 SLOT_PENDING = "…"  # a source is still being queried ("…")
 
@@ -2079,6 +2080,9 @@ class CallbookApp:
         # (and there are at least two), the operator can trust it: green.
         real_vals = [v for v in vals if v not in (SLOT_EMPTY, SLOT_PENDING)]
         agree = all_done and len(real_vals) >= 2 and len(set(real_vals)) == 1
+        # Size of the biggest group of matching values: 3+ -> green (QRZ
+        # agrees too), 2 -> yellow, otherwise plain white.
+        top = max((real_vals.count(v) for v in set(real_vals)), default=0)
         # When they all agree, show the value once (larger) instead of
         # "MA/5 MA/5 MA/5" / "JN76HD - JN76HD - JN76HD".
         collapsed = agree and self.COLLAPSE_ON_AGREE
@@ -2107,8 +2111,10 @@ class CallbookApp:
             else:
                 text = line
             bg = COLOR_ACTIVE
-            if agree:
+            if all_done and top >= 3:
                 fill = TEXT_AGREE
+            elif all_done and top == 2:
+                fill = TEXT_PARTIAL
             font = self._font_for(text)
         elif not all_done:
             text = SLOT_PENDING

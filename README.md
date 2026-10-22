@@ -1,6 +1,6 @@
 # Callbooker – contest callbook for HF and VHF
 
-> **Version:** 1.11 · Made by **S55OO** with AI assistance.
+> **Version:** 1.12 · Made by **S55OO** with AI assistance.
 > · **Public domain** – see [LICENSE](LICENSE).
 
 A compact always-on-top window that listens to your logger's UDP broadcast
@@ -349,8 +349,12 @@ last `RadioInfo`; it is `null` for VHFCtest4WIN.
   the lookup resolves, where the data came from – `K1KI · local` (already
   in this PC's cache), `K1KI · LAN` (a peer answered over 6768), or
   `K1KI · online` (a fresh QRZ / QRZCQ / HamQTH fetch).
-- **When every source that answered agrees**, the text turns light green
-  **and the repeated token collapses to one** – `FRED - MA/5 MA/5 MA/5`
+- **Colours:** **green** = three sources agree, **yellow** = two agree and
+  one differs (or only two sources exist and both match), **white** = all
+  differ.
+
+- **When every source that answered agrees**, the repeated token
+  **collapses to one** – `FRED - MA/5 MA/5 MA/5`
   shows as **`FRED - MA/5`**. A disagreement (`FRED - MA/5 MA/4 MA/5`), or
   a source that returned only part (`MA` vs `MA/5`), keeps every slot
   visible so the odd one out is obvious.
@@ -489,7 +493,12 @@ dev/*.py, dev/*.md      – logger-feed / VHFCtest4WIN notes and sniff tools
 
 Callbooker replaces the earlier separate apps (`n1mm_callbook` for HF,
 `VHFcallbook` for VHF, and before that `n1mm_VHFcallbook` /
-`VHFctest4WinCallbook`). All of their features are in `Callbooker` 1.11.
+`VHFctest4WinCallbook`). All of their features are in `Callbooker` 1.12.
+
+- **1.12** – **agreement colours.** The result text is now **green** when
+  three sources return the same value (QRZ agrees too), **yellow** when two
+  match and one differs (or only two sources exist and both match), and white
+  when they all differ. Every source slot is still shown unless all agree.
 
 - **1.11** – **antivirus false positive fixed + reliable self-update.** The
   release `Callbooker.exe` is now built by GitHub Actions with the

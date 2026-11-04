@@ -1,6 +1,6 @@
 # Callbooker – contest callbook for HF and VHF
 
-> **Version:** 1.12 · Made by **S55OO** with AI assistance.
+> **Version:** 1.13 · Made by **S55OO** with AI assistance.
 > · **Public domain** – see [LICENSE](LICENSE).
 
 A compact always-on-top window that listens to your logger's UDP broadcast
@@ -496,7 +496,14 @@ dev/*.py, dev/*.md      – logger-feed / VHFCtest4WIN notes and sniff tools
 
 Callbooker replaces the earlier separate apps (`n1mm_callbook` for HF,
 `VHFcallbook` for VHF, and before that `n1mm_VHFcallbook` /
-`VHFctest4WinCallbook`). All of their features are in `Callbooker` 1.12.
+`VHFctest4WinCallbook`). All of their features are in `Callbooker` 1.13.
+
+- **1.13** – **works with N1MM set to `127.0.0.1:12060`.** The logger-feed
+  listener now binds loopback as well as the wildcard address (so
+  127.0.0.1 traffic is received even when another program shares the port
+  or the wildcard bind fails), and shows a footer hint
+  (`Cannot listen on UDP 12060 ...`) instead of silently staying empty when
+  the port cannot be bound at all.
 
 - **1.12** – **agreement colours.** The result text is now **green** when
   three sources return the same value (QRZ agrees too), **yellow** when two

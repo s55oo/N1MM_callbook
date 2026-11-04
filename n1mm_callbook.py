@@ -16,7 +16,7 @@ the paid XML service when credentials are configured, else its public
 Made by S55OO with AI assistance.
 """
 
-__version__ = "1.12"
+__version__ = "1.13"
 
 import argparse
 import base64
@@ -40,7 +40,7 @@ import xml.etree.ElementTree as ET
 import updater
 from mqtt_client import MqttPublisher, lookup_payload
 
-USER_AGENT = "Mozilla/5.0 Callbooker/1.12"
+USER_AGENT = "Mozilla/5.0 Callbooker/1.13"
 HAMQTH_UA = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
     "(KHTML, like Gecko) Chrome/126.0 Safari/537.36"
@@ -348,30 +348,54 @@ def open_socket(bind_ip, port):
     return sock
 
 
-def listener_loop(bind_ip, port, on_packet, stop):
-    try:
-        sock = open_socket(bind_ip, port)
-    except OSError:
+def listener_loop(bind_ip, port, on_packet, stop, on_status=None):
+    """Listen for the logger's UDP broadcast on *port*.
+
+    Binds the wildcard address (broadcast + LAN unicast) **and** loopback
+    separately. The loopback socket matters when the logger is set to send
+    to 127.0.0.1: another program holding the port, or a failed wildcard
+    bind, would otherwise leave 127.0.0.1 traffic with no listener. If no
+    socket can be bound at all, *on_status* is called once with a hint
+    (shown in the footer) instead of failing silently.
+    """
+    socks = []
+    for ip in (bind_ip, "127.0.0.1"):
+        try:
+            socks.append(open_socket(ip, port))
+        except OSError:
+            pass
+    if not socks:
         for ip in local_interfaces():
             try:
-                sock = open_socket(ip, port)
+                socks.append(open_socket(ip, port))
                 break
             except OSError:
                 continue
-        else:
-            return
+    if not socks:
+        if on_status:
+            on_status(
+                "Cannot listen on UDP {} - another program holds it "
+                "(check: netstat -ano | findstr :{})".format(port, port)
+            )
+        return
     while not stop.is_set():
         try:
-            data, addr = sock.recvfrom(65535)
-        except socket.timeout:
-            continue
-        except OSError:
+            ready, _, _ = select.select(socks, [], [], 0.3)
+        except (OSError, ValueError):
             break
-        on_packet(addr[0], data)
-    try:
-        sock.close()
-    except OSError:
-        pass
+        for sock in ready:
+            try:
+                data, addr = sock.recvfrom(65535)
+            except socket.timeout:
+                continue
+            except OSError:
+                continue
+            on_packet(addr[0], data)
+    for sock in socks:
+        try:
+            sock.close()
+        except OSError:
+            pass
 
 
 def _udp_payload(pkt, want_port):
@@ -1406,7 +1430,8 @@ class CallbookApp:
         self.stop = threading.Event()
         self.thread = threading.Thread(
             target=listener_loop,
-            args=("0.0.0.0", port, self.on_packet, self.stop),
+            args=("0.0.0.0", port, self.on_packet, self.stop,
+                  self._on_v4w_status),
             daemon=True,
         )
         self.thread.start()

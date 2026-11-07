@@ -123,8 +123,13 @@ QRA locator can be caught while it is still editable. The feed is **on by
 default**; set `vhfctest_share=no` in `Callbooker.cfg` to turn it (and the
 UAC prompt below) off.
 
-- Nothing to switch on in VHFCtest4WIN – it already broadcasts its entry
-  field on 6767 as part of normal network sharing.
+- **Enable the broadcast in VHFCtest4WIN.** It only sends the entry field
+  on 6767 when its network sharing broadcast is switched on (the
+  `[Network]` `BroadcastIP` in `VHFCtest4Win.ini`) – even on a single PC.
+  With it off, nothing is sent while you type, so **Callbooker only looks
+  the call up when you press Enter** (from VHFCtest4WIN's post-log packet
+  on 12060) instead of ~0.3 s after you stop typing. If you see lookups
+  only on Enter, turn the broadcast on.
 - **Port 6767 / UAC.** VHFCtest4WIN keeps 6767 open with an exclusive
   lock, so the only way to read the broadcast while it runs is a raw
   capture socket, which needs elevation. When VHFCtest4WIN is already up,

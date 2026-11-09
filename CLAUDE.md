@@ -254,6 +254,10 @@ import — so `python -m PyInstaller Callbooker.spec` reproduces the build.
 
 ## Release ritual
 
+**Standing rule from the owner: after every user-facing push, always dispatch the
+exe build** (`gh api -X POST repos/s55oo/N1MM_callbook/actions/workflows/build-exe.yml/dispatches -f ref=main`),
+wait for it, and report the run id, SHA-256 and the Defender-scan line.
+
 A **user-facing change** gets a version bump + a release; a
 docs / `dev/` / comment change is committed and pushed only.
 

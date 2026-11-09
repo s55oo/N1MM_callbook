@@ -221,8 +221,8 @@ unchanged.
 
 ## Files the app writes (all gitignored, all safe to delete)
 
-`Callbooker_cache.json`, `Callbooker_window.json` (last position **and**
-`{"mode": ...}`), `qrz_session.json`. Next to the `.cfg` / exe.
+`Callbooker_cache.json`, `Callbooker_window.json` (last position, `"mode"`,
+`"show"` = output-field choice, `"contest_start"` = menu-set start), `qrz_session.json`. Next to the `.cfg` / exe.
 
 **Never commit `Callbooker.cfg`** (nor the older `callbook.cfg` /
 `VHFcallbook.cfg` / …, still gitignored) — it holds the QRZ login in

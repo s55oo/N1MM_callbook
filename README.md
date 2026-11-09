@@ -249,6 +249,11 @@ update_check=yes
 # exe stays as Callbooker_<old version>.exe). no = only when you click ?:
 update_auto=yes
 
+# Contest start countdown: READY / STEADY / GO on the big display in the
+# last 3 seconds before this local date + time (right-click menu does the
+# same and wins over this line; empty = off):
+# contest_start=2026-11-14 17:30
+
 # QRZ.com login - the QRZ column uses the paid XML API when this is set
 # and the subscription is live, otherwise the public page (locator only):
 # qrz_username=S55OO
@@ -504,11 +509,13 @@ n1mm_callbook.py        – the engine: CallbookApp window, run(), the source fu
 mqtt_client.py          – optional reconnecting MQTT publisher (paho-mqtt)
 updater.py              – GitHub-release update check + self-swap (stdlib)
 requirements.txt        – Python runtime dependency (paho-mqtt)
-Callbooker.spec         – PyInstaller build settings
+Callbooker.spec         – PyInstaller build settings (embeds version info + icon)
+callbooker.ico          – application icon of the exe
 .github/workflows/build-exe.yml – release build of the exe (GitHub Actions)
 manifest.xml            – PyInstaller manifest (common controls)
 Callbooker_cache.json   – local lookup cache          (auto-created, gitignored)
-Callbooker_window.json  – last window position + view (auto-created, gitignored)
+Callbooker_window.json  – last window position, view, output-field choice and
+                          menu-set contest start (auto-created, gitignored)
 qrz_session.json        – cached QRZ XML session key   (auto-created, gitignored)
 update_check.json       – last update-check result     (auto-created, gitignored)
 LICENSE                 – The Unlicense (public domain)

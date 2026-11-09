@@ -16,7 +16,7 @@ the paid XML service when credentials are configured, else its public
 Made by S55OO with AI assistance.
 """
 
-__version__ = "1.16"
+__version__ = "1.17"
 
 import argparse
 import base64
@@ -40,7 +40,7 @@ import xml.etree.ElementTree as ET
 import updater
 from mqtt_client import MqttPublisher, lookup_payload
 
-USER_AGENT = "Mozilla/5.0 Callbooker/1.16"
+USER_AGENT = "Mozilla/5.0 Callbooker/1.17"
 HAMQTH_UA = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
     "(KHTML, like Gecko) Chrome/126.0 Safari/537.36"
@@ -1322,6 +1322,17 @@ class CallbookApp:
     SLOT_SEP = " "
     # Show the operator's first name too (printed once, in front).
     SHOW_NAME = True
+    # What the operator can switch on/off in the right-click menu. The slot
+    # fields are shown in this order (state / zone / locator); the name, when
+    # on, is printed once in front.
+    SHOW_CHOICES = (
+        ("name", "Name"),
+        ("cqzone", "CQ zone"),
+        ("state", "State"),
+        ("grid", "Locator"),
+    )
+    _SLOT_ORDER = ("state", "cqzone", "grid")
+    _show = None  # operator field choice; set per instance in __init__
     # Append " (Country)" to that name for a non-US (DX) call. Callbooker
     # turns this off in both views - the CQ zone is the multiplier.
     DX_COUNTRY = True
@@ -1404,6 +1415,10 @@ class CallbookApp:
         self._update_auto = bool(update_auto)
         self._update_status = None  # updater.status() once a check has run
         self._idle_text = ""        # last idle version line we wrote
+        # The operator's own choice of output fields (right-click menu), a
+        # frozenset of SHOW_CHOICES keys, or None = automatic per view.
+        self._show = self._load_show()
+        self._apply_show()
         self._update = None
         self._update_inbox = []
         self._update_state = ""
@@ -1563,6 +1578,101 @@ class CallbookApp:
             frame, text="", font=("Segoe UI", FONT_SIZE_FOOTER), justify=tk.CENTER
         )
         self.call_label.pack(fill=tk.X)
+        self._build_field_menu()
+
+    # -- choosing what the output shows (right-click menu) --------------
+
+    def _load_show(self):
+        if not self.win_file:
+            return None
+        try:
+            with open(self.win_file, encoding="utf-8") as fh:
+                raw = json.load(fh).get("show")
+        except (OSError, ValueError, AttributeError):
+            return None
+        keys = {k for k, _ in self.SHOW_CHOICES}
+        if isinstance(raw, list):
+            return frozenset(k for k in raw if k in keys) or None
+        return None
+
+    def _apply_show(self):
+        # Make SLOT_FIELDS / SHOW_NAME / SLOT_SEP follow the operator's
+        # choice. Plain attribute writes; automatic mode (None) leaves the
+        # per-view defaults alone.
+        if not self._show:
+            return
+        fields = tuple(k for k in self._SLOT_ORDER if k in self._show)
+        self.SLOT_FIELDS = fields
+        self.SHOW_NAME = "name" in self._show
+        self.SLOT_SEP = " - " if "grid" in fields else " "
+
+    def _apply_view_defaults(self):
+        # Back to automatic: drop the instance overrides so the class
+        # defaults show through (CallbookerApp re-applies its HF/VHF view).
+        for attr in ("SLOT_FIELDS", "SHOW_NAME", "SLOT_SEP"):
+            self.__dict__.pop(attr, None)
+
+    def _effective_show(self):
+        # The fields currently on screen, for the menu's check marks.
+        if self._show:
+            return set(self._show)
+        chosen = set(self.SLOT_FIELDS)
+        if self.SHOW_NAME:
+            chosen.add("name")
+        return chosen
+
+    def _rerender(self):
+        # Repaint the call on screen after the field choice changed.
+        call = self.current
+        if not call or self._precheck_active:
+            return
+        if self._slots is not None:
+            self._render_slots(call, self._slots, self._pending_inds)
+        else:
+            sources = self._cached_sources(call)
+            if sources is not None:
+                self._render_slots(call, list(sources), set())
+
+    def _build_field_menu(self):
+        self._show_vars = {
+            k: tk.BooleanVar(master=self.root) for k, _ in self.SHOW_CHOICES
+        }
+        menu = tk.Menu(self.root, tearoff=0)
+        menu.add_command(label="Show in the output:", state="disabled")
+        for key, label in self.SHOW_CHOICES:
+            menu.add_checkbutton(
+                label=label, variable=self._show_vars[key],
+                command=lambda k=key: self._toggle_field(k),
+            )
+        menu.add_separator()
+        menu.add_command(label="Automatic (default)", command=self._reset_fields)
+        self._field_menu = menu
+        self.root.bind("<Button-3>", self._popup_field_menu)
+
+    def _popup_field_menu(self, event):
+        chosen = self._effective_show()
+        for key, var in self._show_vars.items():
+            var.set(key in chosen)
+        try:
+            self._field_menu.tk_popup(event.x_root, event.y_root)
+        finally:
+            self._field_menu.grab_release()
+
+    def _toggle_field(self, key):
+        chosen = {k for k, v in self._show_vars.items() if v.get()}
+        if not chosen:  # at least one field must stay on
+            self._show_vars[key].set(True)
+            return
+        self._show = frozenset(chosen)
+        self._apply_show()
+        self._rerender()
+        self._save_window()
+
+    def _reset_fields(self):
+        self._show = None
+        self._apply_view_defaults()
+        self._rerender()
+        self._save_window()
 
     def _recenter_text(self, event):
         self.canvas.coords(self.main_id, event.width / 2.0, event.height / 2.0)
@@ -1632,13 +1742,19 @@ class CallbookApp:
         if m:
             self.root.geometry("{}{}".format(*m.groups()))
 
+    def _window_state(self):
+        state = {"geometry": self.root.geometry()}
+        if self._show:
+            state["show"] = [k for k, _ in self.SHOW_CHOICES if k in self._show]
+        return state
+
     def _save_window(self):
         if not self.win_file:
             return
         try:
             tmp = self.win_file + ".tmp"
             with open(tmp, "w", encoding="utf-8") as fh:
-                json.dump({"geometry": self.root.geometry()}, fh)
+                json.dump(self._window_state(), fh)
             os.replace(tmp, self.win_file)
         except OSError:
             pass
@@ -1721,7 +1837,7 @@ class CallbookApp:
 
     def _capture_lookup_context(self):
         return {
-            "mode": "vhf" if self.SLOT_FIELDS == ("grid",) else "hf",
+            "mode": "vhf" if getattr(self, "_vhf_mode", self.SLOT_FIELDS == ("grid",)) else "hf",
             "feed": getattr(self, "_result_feed", None),
             "frequency_mhz": getattr(self, "_result_frequency_mhz", None),
             "source_labels": tuple(self.source_labels),

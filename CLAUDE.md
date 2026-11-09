@@ -115,6 +115,15 @@ walks `FONT_LADDER` (26 … 12) and returns the first size whose
 `winfo_reqwidth` before) — `Font`s cached in `self._font_cache`; canvas is
 `width=360` to give `FONT_SIZE_BIG` room.
 
+### Output-field menu
+
+Right-click (`_build_field_menu`) toggles `SHOW_CHOICES` (name / cqzone /
+state / grid). `self._show` (frozenset or `None` = automatic) is saved as
+`"show"` in `*_window.json`; `_apply_show()` writes `SLOT_FIELDS` /
+`SHOW_NAME` / `SLOT_SEP` as instance attrs, and `CallbookerApp._apply_mode`
+calls it last so the choice beats the HF/VHF defaults. Automatic →
+`_apply_view_defaults()`. Cache/lookups are unaffected (fields are display-only).
+
 ### Footer info line (`call_label`)
 
 Shows the worked call, plus ` · <source>` once the lookup resolves:

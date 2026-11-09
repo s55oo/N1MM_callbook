@@ -379,6 +379,30 @@ def main():
     ok &= check("precheck: suppressed once a real call is on screen",
                 pc.canvas.text, "unchanged")
 
+    # --- operator-chosen output fields (right-click menu)
+    US = {"name": "Fred Smith", "state": "MA", "cqzone": "5", "grid": "FN42",
+          "country": "United States"}
+    fm = make(ckr.CallbookerApp)
+    fm._qrz_fn = None
+    fm._vhf_mode = False
+    fm._show = None
+    fm._apply_mode(False, force=True)
+    def pick(*keys):
+        fm._show = frozenset(keys)
+        fm._apply_show()
+        return r(fm, [US, US, US])
+    ok &= check("show: name only", pick("name"), "Fred")
+    ok &= check("show: zone only", pick("cqzone"), "5")
+    ok &= check("show: state only", pick("state"), "MA")
+    ok &= check("show: locator only", pick("grid"), "FN42")
+    ok &= check("show: name + locator", pick("name", "grid"), "Fred - FN42")
+    ok &= check("show: state + zone", pick("state", "cqzone"), "MA/5")
+    ok &= check("show: all four", pick("name", "state", "cqzone", "grid"),
+                "Fred - MA/5/FN42")
+    fm._show = None
+    fm._apply_view_defaults()
+    ok &= check("show: automatic restores HF", r(fm, [US, US, US]), "Fred - MA/5")
+
     print("\nALL PASS" if ok else "\nSOME FAILED")
     sys.exit(0 if ok else 1)
 

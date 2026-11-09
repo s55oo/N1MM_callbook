@@ -38,7 +38,7 @@ Usage:
     python Callbooker.py [--port 12060] [--config Callbooker.cfg]
 """
 
-__version__ = "1.16"
+__version__ = "1.17"
 
 import ctypes
 import functools
@@ -174,6 +174,9 @@ class CallbookerApp(cb.CallbookApp):
             self.SLOT_FIELDS = ("state", "cqzone")
             self.SLOT_SEP = " "
             base = self._HF_CHAIN
+        # The operator's own field choice (right-click menu) overrides the
+        # per-view defaults above; no-op in automatic mode.
+        self._apply_show()
         # QRZ slot 0: the credentialled XML/web function when we have a
         # login, else - VHF only - a web-page-only QRZ for the locator.
         qrz = self._qrz_fn or (functools.partial(cb.qrz_lookup) if vhf else None)
@@ -229,14 +232,16 @@ class CallbookerApp(cb.CallbookApp):
         try:
             tmp = self.win_file + ".tmp"
             with open(tmp, "w", encoding="utf-8") as fh:
-                json.dump(
-                    {"geometry": self.root.geometry(),
-                     "mode": "vhf" if self._vhf_mode else "hf"},
-                    fh,
-                )
+                state = self._window_state()
+                state["mode"] = "vhf" if self._vhf_mode else "hf"
+                json.dump(state, fh)
             os.replace(tmp, self.win_file)
         except OSError:
             pass
+
+    def _apply_view_defaults(self):
+        super()._apply_view_defaults()
+        self._apply_mode(self._vhf_mode, force=True)
 
     def _title(self):
         extra = "  +  UDP {}".format(self.vhfctest_port) if self.vhfctest_port else ""

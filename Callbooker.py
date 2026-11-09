@@ -38,7 +38,7 @@ Usage:
     python Callbooker.py [--port 12060] [--config Callbooker.cfg]
 """
 
-__version__ = "1.14"
+__version__ = "1.15"
 
 import ctypes
 import functools
@@ -242,8 +242,9 @@ class CallbookerApp(cb.CallbookApp):
         extra = "  +  UDP {}".format(self.vhfctest_port) if self.vhfctest_port else ""
         if getattr(self, "lan", None) is not None:
             extra += "  +  LAN {}".format(self.lan_share_port)
-        return "{}  -  UDP {}{}  auto HF/VHF  v{}".format(
-            self.APP_TITLE, self.port, extra, self.VERSION
+        # Version right after the name so a narrow title bar never cuts it.
+        return "{} v{}  -  UDP {}{}  auto HF/VHF".format(
+            self.APP_TITLE, self.VERSION, self.port, extra
         )
 
 

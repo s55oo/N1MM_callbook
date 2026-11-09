@@ -1,6 +1,6 @@
 # Callbooker – contest callbook for HF and VHF
 
-> **Version:** 1.14 · Made by **S55OO** with AI assistance.
+> **Version:** 1.15 · Made by **S55OO** with AI assistance.
 > · **Public domain** – see [LICENSE](LICENSE).
 
 A compact always-on-top window that listens to your logger's UDP broadcast
@@ -242,7 +242,7 @@ cache_persist=yes                 # no = in-memory only, never writes to disk
 # selftest=yes
 # selftest_call=S55OO             # call to probe; blank / selftest=no disables
 
-# Update check (GitHub, once a day, title-bar / footer nudge). On by
+# Update check (GitHub, every 6 hours, title-bar / footer nudge). On by
 # default; set to no to disable:
 update_check=yes
 # Download a found update by itself (the next launch installs it, the old
@@ -419,7 +419,7 @@ last `RadioInfo`; it is `null` for VHFCtest4WIN.
 
 ### Update check
 
-On start-up (at most once a day) Callbooker asks GitHub whether a newer
+On start-up (at most every 6 hours, and again while the window stays open) Callbooker asks GitHub whether a newer
 release is out.
 
 - **standalone exe:** the new `Callbooker.exe` is **downloaded
@@ -511,8 +511,15 @@ dev/*.py, dev/*.md      – logger-feed / VHFCtest4WIN notes and sniff tools
 
 Callbooker replaces the earlier separate apps (`n1mm_callbook` for HF,
 `VHFcallbook` for VHF, and before that `n1mm_VHFcallbook` /
-`VHFctest4WinCallbook`). All of their features are in `Callbooker` 1.14.
+`VHFctest4WinCallbook`). All of their features are in `Callbooker` 1.15.
 
+- **1.15** – **see the version and update status.** The version now comes
+  right after the name in the title bar (`Callbooker v1.15 - UDP 12060 ...`)
+  so a narrow window never cuts it off, and the idle footer shows
+  `v1.15 · up to date (latest v1.15, checked 13:52)` (or `update check
+  failed` / `update check off`). The update check now runs every 6 hours
+  (was daily) and again while the window stays open, so a new release is
+  noticed during a long session.
 - **1.14** – **automatic update.** A newer release is now downloaded in
   the background (SHA-256 verified); the next time you start Callbooker it
   swaps it in and **keeps the old exe as `Callbooker_<old version>.exe`**

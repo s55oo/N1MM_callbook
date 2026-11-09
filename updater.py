@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Unlicense
 """Optional GitHub-release update check for Callbooker.
 
-On start-up Callbooker asks GitHub, at most once a day, whether a newer
+On start-up Callbooker asks GitHub, at most every 6 hours, whether a newer
 release is out (``update_check=no`` in the .cfg turns this off). If so the
 footer shows a clickable ``Callbooker vX.Y available`` nudge:
 
@@ -32,7 +32,7 @@ REPO = "s55oo/N1MM_callbook"
 RELEASES_PAGE = "https://github.com/s55oo/N1MM_callbook/releases/"
 API_LATEST = "https://api.github.com/repos/{}/releases/latest".format(REPO)
 ASSET_NAME = "Callbooker.exe"
-CHECK_INTERVAL = 86400          # seconds between GitHub queries
+CHECK_INTERVAL = 6 * 3600       # seconds between GitHub queries
 MIN_EXE_BYTES = 2_000_000       # a sanity floor for the downloaded exe
 _UA = "Callbooker-updater (+https://github.com/{})".format(REPO)
 
@@ -56,7 +56,7 @@ def exe_path():
     return sys.executable if is_frozen() else os.path.abspath(sys.argv[0])
 
 
-# -- the daily check --------------------------------------------------------
+# -- the periodic check --------------------------------------------------------
 
 def _state_path(state_dir):
     return os.path.join(state_dir, "update_check.json")
@@ -124,15 +124,24 @@ def check(current_version, state_dir):
             digest = fetched[2] if len(fetched) > 2 else ""
             _save_state(state_dir, {
                 "checked": now, "latest_tag": tag, "asset_url": asset_url,
-                "digest": digest,
+                "digest": digest, "failed": False,
             })
         else:
-            # network failure: keep the old answer, retry in ~1 h not a day
+            # network failure: keep the old answer, retry in ~1 h not hours
             st["checked"] = now - CHECK_INTERVAL + 3600
+            st["failed"] = True
             _save_state(state_dir, st)
     if tag and version_tuple(tag) > version_tuple(current_version):
         return tag, asset_url
     return None
+
+
+def status(state_dir):
+    """What the last check found, for the idle footer: ``(latest_tag,
+    checked_epoch, failed)``; ``latest_tag`` is '' before the first check."""
+    st = _load_state(state_dir)
+    return (str(st.get("latest_tag") or ""), float(st.get("checked") or 0),
+            bool(st.get("failed")))
 
 
 def cached_digest(state_dir):

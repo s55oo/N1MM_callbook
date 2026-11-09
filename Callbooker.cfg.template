@@ -24,7 +24,7 @@ cache_file=Callbooker_cache.json
 # selftest=no
 # selftest_call=S55OO
 
-# Update check: on start-up (at most once a day) Callbooker asks GitHub
+# Update check: on start-up (at most every 6 hours) Callbooker asks GitHub
 # whether a newer release is out and shows a "click ?" nudge in the title
 # bar / footer. Clicking the ? icon then downloads the new Callbooker.exe;
 # the next launch swaps it in. On by default; set to no to disable.

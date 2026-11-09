@@ -16,7 +16,7 @@ the paid XML service when credentials are configured, else its public
 Made by S55OO with AI assistance.
 """
 
-__version__ = "1.14"
+__version__ = "1.15"
 
 import argparse
 import base64
@@ -40,7 +40,7 @@ import xml.etree.ElementTree as ET
 import updater
 from mqtt_client import MqttPublisher, lookup_payload
 
-USER_AGENT = "Mozilla/5.0 Callbooker/1.14"
+USER_AGENT = "Mozilla/5.0 Callbooker/1.15"
 HAMQTH_UA = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
     "(KHTML, like Gecko) Chrome/126.0 Safari/537.36"
@@ -1402,6 +1402,8 @@ class CallbookApp:
         # tracks the download ("" / "getting" / "ready" / "failed").
         self._update_check = bool(update_check)
         self._update_auto = bool(update_auto)
+        self._update_status = None  # updater.status() once a check has run
+        self._idle_text = ""        # last idle version line we wrote
         self._update = None
         self._update_inbox = []
         self._update_state = ""
@@ -1462,21 +1464,45 @@ class CallbookApp:
             threading.Thread(target=self._run_update_check, daemon=True).start()
 
     def _run_update_check(self):
-        # Daemon thread: ask GitHub (once a day) for a newer release; hand
-        # any result to the GUI via _update_inbox (drained in _poll_inbox).
-        try:
-            state_dir = (os.path.dirname(self.win_file) if self.win_file
-                         else app_dir())
-            found = updater.check(self.VERSION, state_dir)
-        except Exception:
-            found = None
-        if found:
-            self._update_inbox.append(found)
+        # Daemon thread: ask GitHub for a newer release (the check itself is
+        # throttled to every CHECK_INTERVAL) and hand any result to the GUI
+        # via _update_inbox (drained in _poll_inbox). Repeats while the
+        # window stays open, so a long session still notices a new release.
+        state_dir = (os.path.dirname(self.win_file) if self.win_file
+                     else app_dir())
+        while not self.stop.is_set():
+            try:
+                found = updater.check(self.VERSION, state_dir)
+            except Exception:
+                found = None
+            if found and found != self._update:
+                self._update_inbox.append(found)
+            try:
+                self._update_status = updater.status(state_dir)
+            except Exception:
+                pass
+            if self.stop.wait(updater.CHECK_INTERVAL + 60):
+                break
+
+    def _idle_status_line(self):
+        # Footer text while nothing else is on screen: the running version
+        # and what the update check found (so "is it up to date?" is visible).
+        v = "v" + self.VERSION
+        if not self._update_check:
+            return v + " · update check off"
+        st = self._update_status
+        if st is None:
+            return v + " · checking for updates..."
+        tag, checked, failed = st
+        if failed:
+            return v + " · update check failed (will retry)"
+        when = time.strftime("%H:%M", time.localtime(checked)) if checked else "?"
+        return "{} · up to date (latest {}, checked {})".format(v, tag or "?", when)
 
     def _title(self):
         # Base title; CallbookerApp overrides with the feed list.
-        return "{}  -  UDP {}  v{}".format(
-            self.APP_TITLE, self.port, self.VERSION
+        return "{} v{}  -  UDP {}".format(
+            self.APP_TITLE, self.VERSION, self.port
         )
 
     def _update_label(self):
@@ -1929,7 +1955,7 @@ class CallbookApp:
             summary += "  ·  QRZ: web page (no XML sub)"
         elif self._qrz_tier == "xml" and _QRZ_SUBEXP:
             summary += "  ·  QRZ XML sub to " + _QRZ_SUBEXP.split()[-1]
-        self.call_label.configure(text=summary)
+        self.call_label.configure(text="v{} · {}".format(self.VERSION, summary))
         self.canvas.configure(bg=COLOR_IDLE)
         self.canvas.itemconfigure(
             self.main_id, text="—", fill=TEXT_DEFAULT,
@@ -1972,6 +1998,16 @@ class CallbookApp:
             want = self._update_footer_line()
             if self.call_label.cget("text") != want:
                 self.call_label.configure(text=want)
+        elif (not self._update and not self.current
+                and not self._mqtt_error_seen and not self._precheck_active
+                and not self._v4w_status
+                and self.call_label.cget("text") in ("", self._idle_text)):
+            # Idle and nothing else in the footer: show version + update
+            # status. Never overwrites the self-test summary / 6767 hint.
+            want = self._idle_status_line()
+            if self.call_label.cget("text") != want:
+                self.call_label.configure(text=want)
+                self._idle_text = want
         if self._v4w_status:
             msg, self._v4w_status = self._v4w_status, None
             if not self.current:  # don't clobber a lookup already on screen

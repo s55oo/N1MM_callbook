@@ -222,6 +222,24 @@ def sha_and_backup_tests():
     finally:
         up._fetch_latest = real_fetch
 
+    # status(): what the idle footer reports
+    d = tempfile.mkdtemp()
+    ok &= check("status before any check", up.status(d), ("", 0.0, False))
+    up._fetch_latest = lambda: ("v9.9", "http://x/Callbooker.exe", good)
+    up.check("1.0", d)
+    tag, checked, failed = up.status(d)
+    ok &= check("status after a good check", (tag, failed, checked > 0), ("v9.9", False, True))
+    st = up._load_state(d)
+    st["checked"] = 0      # force a re-fetch
+    up._save_state(d, st)
+    up._fetch_latest = lambda: None
+    try:
+        up.check("1.0", d)
+        ok &= check("status after a failed fetch", (up.status(d)[0], up.status(d)[2]), ("v9.9", True))
+    finally:
+        up._fetch_latest = real_fetch
+    ok &= check("check interval is hours, not a day", up.CHECK_INTERVAL <= 6 * 3600, True)
+
     # backup_name()
     d = tempfile.mkdtemp()
     exe = os.path.join(d, "Callbooker.exe")

@@ -16,7 +16,7 @@ the paid XML service when credentials are configured, else its public
 Made by S55OO with AI assistance.
 """
 
-__version__ = "1.17"
+__version__ = "1.18"
 
 import argparse
 import base64
@@ -40,7 +40,7 @@ import xml.etree.ElementTree as ET
 import updater
 from mqtt_client import MqttPublisher, lookup_payload
 
-USER_AGENT = "Mozilla/5.0 Callbooker/1.17"
+USER_AGENT = "Mozilla/5.0 Callbooker/1.18"
 HAMQTH_UA = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
     "(KHTML, like Gecko) Chrome/126.0 Safari/537.36"
@@ -1422,6 +1422,9 @@ class CallbookApp:
         self._update = None
         self._update_inbox = []
         self._update_state = ""
+        self._manual_dl = False     # button-driven check: download even if update_auto=no
+        self._manual_msg = ""       # transient footer text from the button
+        self._manual_until = 0.0
         # Start-up self-test (see _start_precheck). Empty call = disabled.
         self._selftest_call = normalize_call(selftest_call)
         self._precheck = None       # per source: None = pending, (status, ms)
@@ -1499,6 +1502,80 @@ class CallbookApp:
             if self.stop.wait(updater.CHECK_INTERVAL + 60):
                 break
 
+    # -- manual "check for update" button --------------------------------
+
+    def _say(self, text, secs=8):
+        # Transient footer message (shown by _poll_inbox while no call is up).
+        self._manual_msg = text
+        self._manual_until = time.time() + secs
+
+    def _check_now(self):
+        # The button: ask GitHub right now (ignoring the 6 h throttle). A
+        # newer exe is downloaded at once; when it is ready the same button
+        # restarts Callbooker, which swaps the new exe in and keeps the old
+        # one as Callbooker_<ver>.exe.
+        if self._update_state == "ready":
+            self._restart_now()
+            return
+        if self._update_state == "getting":
+            self._say("downloading update ...")
+            return
+        if self._update_state == "failed":
+            self._update_state = ""  # a fresh click retries the download
+        if not self._update_check:
+            self._say("update check is off (update_check=no)")
+            return
+        if getattr(self, "_manual_busy", False):
+            return
+        self._manual_busy = True
+        self._say("checking for updates ...", 30)
+
+        def work():
+            state_dir = (os.path.dirname(self.win_file) if self.win_file
+                         else app_dir())
+            try:
+                found = updater.check(self.VERSION, state_dir, force=True)
+                st = updater.status(state_dir)
+                self._update_status = st
+            except Exception:
+                found, st = None, None
+            if st is None or st[2]:
+                self._say("update check failed - no network?")
+            elif found:
+                self._manual_dl = True
+                self._update_inbox.append(found)
+                if updater.is_frozen() and found[1]:
+                    self._say("{} found - downloading ...".format(found[0]), 30)
+                else:
+                    self._say("{} available - click ? for the releases page"
+                              .format(found[0]), 15)
+            else:
+                self._say("up to date (v{}, latest {})".format(
+                    self.VERSION, st[0] or "?"))
+            self._manual_busy = False
+
+        threading.Thread(target=work, daemon=True).start()
+
+    def _restart_now(self):
+        # Relaunch the exe; the new process finds Callbooker.exe.new and swaps
+        # it in (updater.apply_pending), then we exit.
+        if not updater.is_frozen():
+            return
+        try:
+            import subprocess
+            flags = 0
+            if sys.platform == "win32":
+                flags = 0x00000008 | 0x08000000  # DETACHED | NO_WINDOW
+            subprocess.Popen(
+                [updater.exe_path()] + sys.argv[1:],
+                stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL, creationflags=flags,
+            )
+        except Exception:
+            self._say("could not restart - close and reopen Callbooker", 15)
+            return
+        self.on_close()
+
     def _idle_status_line(self):
         # Footer text while nothing else is on screen: the running version
         # and what the update check found (so "is it up to date?" is visible).
@@ -1559,6 +1636,12 @@ class CallbookApp:
         self.help_link = tk.Label(top, image=self.help_icon, cursor="hand2")
         self.help_link.pack(side=tk.RIGHT)
         self.help_link.bind("<Button-1>", lambda e: self._open_help())
+        self.update_btn = tk.Label(
+            top, text="Check update", font=("Segoe UI", 8, "underline"),
+            fg="#1a5fb4", cursor="hand2",
+        )
+        self.update_btn.pack(side=tk.RIGHT, padx=(0, 8))
+        self.update_btn.bind("<Button-1>", lambda e: self._check_now())
 
         self.canvas = tk.Canvas(
             frame,
@@ -1646,6 +1729,8 @@ class CallbookApp:
             )
         menu.add_separator()
         menu.add_command(label="Automatic (default)", command=self._reset_fields)
+        menu.add_separator()
+        menu.add_command(label="Check for update now", command=self._check_now)
         self._field_menu = menu
         self.root.bind("<Button-3>", self._popup_field_menu)
 
@@ -2102,14 +2187,29 @@ class CallbookApp:
             self._update_inbox.clear()
             # update_auto: fetch the new exe now instead of waiting for a
             # click on "?" (frozen exe with a release asset only).
-            if (self._update_auto and updater.is_frozen()
+            if ((self._update_auto or self._manual_dl) and updater.is_frozen()
                     and self._update[1] and self._update_state == ""):
                 self._start_update_download(self._update[1])
+        _btn = ("Restart to install" if self._update_state == "ready"
+                else "Downloading ..." if self._update_state == "getting"
+                else "Check update")
+        if self.update_btn.cget("text") != _btn:
+            self.update_btn.configure(text=_btn)
+        _msg_on = False
+        if self._manual_msg and not self.current and not self._precheck_active:
+            if time.time() < self._manual_until:
+                _msg_on = True
+                if self.call_label.cget("text") != self._manual_msg:
+                    self.call_label.configure(text=self._manual_msg)
+            else:
+                self._manual_msg = ""
         _title_key = (bool(self._update), self._update_state)
         if _title_key != getattr(self, "_title_key", None):
             self._title_key = _title_key
             self._refresh_title()
-        if (self._update and not self.current and not self._mqtt_error_seen
+        if _msg_on:
+            pass  # the button's message owns the footer for a few seconds
+        elif (self._update and not self.current and not self._mqtt_error_seen
                 and not self._precheck_active):
             want = self._update_footer_line()
             if self.call_label.cget("text") != want:

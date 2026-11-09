@@ -124,6 +124,15 @@ state / grid). `self._show` (frozenset or `None` = automatic) is saved as
 calls it last so the choice beats the HF/VHF defaults. Automatic →
 `_apply_view_defaults()`. Cache/lookups are unaffected (fields are display-only).
 
+### Manual update button
+
+`update_btn` (title row) / right-click item → `_check_now`: forced
+`updater.check(..., force=True)` on a thread, result via `_update_inbox`,
+`_manual_dl` makes `_poll_inbox` download even with `update_auto=no`,
+`_say()` shows a transient footer message (`_manual_msg`). When
+`_update_state == "ready"` the same button calls `_restart_now` (relaunch the
+exe; `apply_pending` in the new process swaps `.new` in).
+
 ### Footer info line (`call_label`)
 
 Shows the worked call, plus ` · <source>` once the lookup resolves:

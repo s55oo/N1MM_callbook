@@ -108,16 +108,16 @@ def _fetch_latest():
     return tag, asset_url, digest
 
 
-def check(current_version, state_dir):
+def check(current_version, state_dir, force=False):
     """Return ``(tag, asset_url)`` when GitHub's latest release is newer
     than *current_version*, else None. Hits the network at most once per
-    ``CHECK_INTERVAL``; the last result is cached in ``update_check.json``
+    ``CHECK_INTERVAL`` (``force=True`` always asks - the manual button); the last result is cached in ``update_check.json``
     next to the other state files."""
     st = _load_state(state_dir)
     now = time.time()
     tag = st.get("latest_tag")
     asset_url = st.get("asset_url", "")
-    if not tag or (now - st.get("checked", 0)) > CHECK_INTERVAL:
+    if force or not tag or (now - st.get("checked", 0)) > CHECK_INTERVAL:
         fetched = _fetch_latest()
         if fetched:
             tag, asset_url = fetched[0], fetched[1]

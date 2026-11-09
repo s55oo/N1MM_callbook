@@ -38,7 +38,7 @@ Usage:
     python Callbooker.py [--port 12060] [--config Callbooker.cfg]
 """
 
-__version__ = "1.17"
+__version__ = "1.18"
 
 import ctypes
 import functools

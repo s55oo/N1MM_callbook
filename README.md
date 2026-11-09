@@ -1,6 +1,6 @@
 # Callbooker – contest callbook for HF and VHF
 
-> **Version:** 1.17 · Made by **S55OO** with AI assistance.
+> **Version:** 1.18 · Made by **S55OO** with AI assistance.
 > · **Public domain** – see [LICENSE](LICENSE).
 
 A compact always-on-top window that listens to your logger's UDP broadcast
@@ -511,8 +511,14 @@ dev/*.py, dev/*.md      – logger-feed / VHFCtest4WIN notes and sniff tools
 
 Callbooker replaces the earlier separate apps (`n1mm_callbook` for HF,
 `VHFcallbook` for VHF, and before that `n1mm_VHFcallbook` /
-`VHFctest4WinCallbook`). All of their features are in `Callbooker` 1.17.
+`VHFctest4WinCallbook`). All of their features are in `Callbooker` 1.18.
 
+- **1.18** – **"Check update" button.** A link in the title row (and
+  *Check for update now* in the right-click menu) asks GitHub immediately.
+  A newer `Callbooker.exe` is downloaded (SHA-256 verified); the button then
+  reads **Restart to install** - one click relaunches, swaps the new exe in
+  and keeps the old one as `Callbooker_<version>.exe`. The footer says
+  what it found ("up to date", "downloading ...", "check failed").
 - **1.17** – **choose what the output shows.** Right-click the window
   for a menu with *Name*, *CQ zone*, *State* and *Locator* check boxes;
   the display shows exactly the ticked fields (at least one stays on) and

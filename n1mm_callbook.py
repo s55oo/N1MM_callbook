@@ -16,7 +16,7 @@ the paid XML service when credentials are configured, else its public
 Made by S55OO with AI assistance.
 """
 
-__version__ = "1.13"
+__version__ = "1.14"
 
 import argparse
 import base64
@@ -40,7 +40,7 @@ import xml.etree.ElementTree as ET
 import updater
 from mqtt_client import MqttPublisher, lookup_payload
 
-USER_AGENT = "Mozilla/5.0 Callbooker/1.13"
+USER_AGENT = "Mozilla/5.0 Callbooker/1.14"
 HAMQTH_UA = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
     "(KHTML, like Gecko) Chrome/126.0 Safari/537.36"
@@ -1268,6 +1268,12 @@ def run(app_class, config_name, cache_name, description, always_vhfctest=False):
         "no", "false", "0", "off",
     )
 
+    # Download a found update by itself (the next launch swaps it in and keeps
+    # the old exe as Callbooker_<version>.exe). On by default.
+    update_auto = settings.get("update_auto", "yes").strip().lower() not in (
+        "no", "false", "0", "off",
+    )
+
     # Side files live next to the cache: the remembered window position /
     # view and the QRZ XML session key.
     data_dir = os.path.dirname(cache_file)
@@ -1291,6 +1297,7 @@ def run(app_class, config_name, cache_name, description, always_vhfctest=False):
         os.path.dirname(os.path.abspath(args.config)),
         lan_share_bcast,
         update_check,
+        update_auto,
     )
     root.mainloop()
 
@@ -1337,7 +1344,7 @@ class CallbookApp:
                  qrz_password="", win_file=None, cache_persist=True,
                  vhfctest_port=0, selftest_call="", lan_share_port=0,
                  mqtt_settings=None, config_dir="", lan_share_bcast="",
-                 update_check=True):
+                 update_check=True, update_auto=True):
         self.root = root
         self.port = port
         self.vhfctest_port = vhfctest_port
@@ -1394,6 +1401,7 @@ class CallbookApp:
         # (tag, asset_url) once a newer release is seen; _update_state
         # tracks the download ("" / "getting" / "ready" / "failed").
         self._update_check = bool(update_check)
+        self._update_auto = bool(update_auto)
         self._update = None
         self._update_inbox = []
         self._update_state = ""
@@ -1476,7 +1484,7 @@ class CallbookApp:
         tag = self._update[0] if self._update else "?"
         return {
             "getting": "downloading " + tag + " ...",
-            "ready": tag + " downloaded - restart Callbooker",
+            "ready": tag + " downloaded - restart Callbooker to install",
             "failed": tag + " download failed - click ? for releases",
         }.get(self._update_state, "update " + tag + " available - click ?")
 
@@ -1561,13 +1569,24 @@ class CallbookApp:
             return
         if self._update_state in ("getting", "ready"):
             return  # already downloading / done - restart to finish
+        self._start_update_download(asset_url)
+
+    def _start_update_download(self, asset_url):
+        # Download the new exe next to the running one (worker thread); the
+        # next launch swaps it in. Checked against GitHub's SHA-256.
         self._update_state = "getting"
         self._refresh_title()
         dest = updater.exe_path() + ".new"
+        try:
+            state_dir = (os.path.dirname(self.win_file) if self.win_file
+                         else app_dir())
+            digest = updater.cached_digest(state_dir)
+        except Exception:
+            digest = ""
 
         def work():
             self._update_state = "ready" if updater.download(
-                asset_url, dest) else "failed"
+                asset_url, dest, digest) else "failed"
 
         threading.Thread(target=work, daemon=True).start()
 
@@ -1939,6 +1958,11 @@ class CallbookApp:
         if self._update_inbox:
             self._update = self._update_inbox[-1]
             self._update_inbox.clear()
+            # update_auto: fetch the new exe now instead of waiting for a
+            # click on "?" (frozen exe with a release asset only).
+            if (self._update_auto and updater.is_frozen()
+                    and self._update[1] and self._update_state == ""):
+                self._start_update_download(self._update[1])
         _title_key = (bool(self._update), self._update_state)
         if _title_key != getattr(self, "_title_key", None):
             self._title_key = _title_key

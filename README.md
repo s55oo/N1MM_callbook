@@ -1,6 +1,6 @@
 # Callbooker – contest callbook for HF and VHF
 
-> **Version:** 1.13 · Made by **S55OO** with AI assistance.
+> **Version:** 1.14 · Made by **S55OO** with AI assistance.
 > · **Public domain** – see [LICENSE](LICENSE).
 
 A compact always-on-top window that listens to your logger's UDP broadcast
@@ -245,6 +245,9 @@ cache_persist=yes                 # no = in-memory only, never writes to disk
 # Update check (GitHub, once a day, title-bar / footer nudge). On by
 # default; set to no to disable:
 update_check=yes
+# Download a found update by itself (the next launch installs it, the old
+# exe stays as Callbooker_<old version>.exe). no = only when you click ?:
+update_auto=yes
 
 # QRZ.com login - the QRZ column uses the paid XML API when this is set
 # and the subscription is live, otherwise the public page (locator only):
@@ -417,15 +420,22 @@ last `RadioInfo`; it is `null` for VHFCtest4WIN.
 ### Update check
 
 On start-up (at most once a day) Callbooker asks GitHub whether a newer
-release is out. If so the **title bar** shows `· update vX.Y available –
-click ?`. Clicking the **? icon** then:
+release is out.
 
-- **standalone exe:** downloads the new `Callbooker.exe` next to the
-  current one (`Callbooker.exe.new`) – the title shows `downloading…`
-  then `vX.Y downloaded – restart Callbooker`. **Restart Callbooker once**
-  and it swaps itself to the new version (a running `.exe` can't be
-  overwritten, only renamed, so the swap happens on the next launch).
-- **running from source:** opens
+- **standalone exe:** the new `Callbooker.exe` is **downloaded
+  automatically** next to the current one (`Callbooker.exe.new`) and
+  checked against the SHA-256 GitHub publishes for it. The title bar shows
+  `downloading…` then `vX.Y downloaded – restart Callbooker to install`.
+  **Restart Callbooker once** and it swaps itself to the new version (a
+  running `.exe` can't be overwritten, only renamed, so the swap happens on
+  the next launch). **The previous version is kept** beside it as
+  `Callbooker_<old version>.exe` (e.g. `Callbooker_1.13.exe`) – start that
+  one to go back, delete it when you don't need it. Nothing is installed
+  while you are mid-contest: the swap only happens when *you* restart.
+  `update_auto=no` in `Callbooker.cfg` makes it wait for a click on the
+  **? icon** instead.
+- **running from source:** the title bar shows `· update vX.Y available –
+  click ?`, and clicking the **? icon** opens
   [the releases page](https://github.com/s55oo/N1MM_callbook/releases/) –
   update with `git pull`.
 
@@ -501,7 +511,12 @@ dev/*.py, dev/*.md      – logger-feed / VHFCtest4WIN notes and sniff tools
 
 Callbooker replaces the earlier separate apps (`n1mm_callbook` for HF,
 `VHFcallbook` for VHF, and before that `n1mm_VHFcallbook` /
-`VHFctest4WinCallbook`). All of their features are in `Callbooker` 1.13.
+`VHFctest4WinCallbook`). All of their features are in `Callbooker` 1.14.
+
+- **1.14** – **automatic update.** A newer release is now downloaded in
+  the background (SHA-256 verified); the next time you start Callbooker it
+  swaps it in and **keeps the old exe as `Callbooker_<old version>.exe`**
+  so you can go back. `update_auto=no` restores click-the-`?` behaviour.
 
 - **1.13** – **works with N1MM set to `127.0.0.1:12060`.** The logger-feed
   listener now binds loopback as well as the wildcard address (so

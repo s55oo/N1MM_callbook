@@ -38,7 +38,7 @@ Usage:
     python Callbooker.py [--port 12060] [--config Callbooker.cfg]
 """
 
-__version__ = "1.13"
+__version__ = "1.14"
 
 import ctypes
 import functools
@@ -251,7 +251,7 @@ def main():
     # A previous run may have downloaded a newer Callbooker.exe next to us;
     # finish that update (swap + relaunch) before anything else.
     import updater
-    if updater.apply_pending():
+    if updater.apply_pending(__version__):
         return
     want_v4w = _wants_v4w_feed(sys.argv)
     if (

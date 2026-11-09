@@ -164,6 +164,97 @@ def apply_pending_tests():
     return ok
 
 
+def sha_and_backup_tests():
+    """SHA-256 verification, digest parsing and the versioned backup name."""
+    ok = True
+    import hashlib
+    import json
+    import subprocess
+    import urllib.request
+
+    class FakeResp(io.BytesIO):
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            self.close()
+
+    big = b"MZ" + b"\0" * (up.MIN_EXE_BYTES + 10)
+    good = hashlib.sha256(big).hexdigest()
+    real_open = urllib.request.urlopen
+
+    # download(): digest match / mismatch
+    urllib.request.urlopen = lambda req, timeout=0: FakeResp(big)
+    try:
+        dest = tempfile.mktemp(suffix=".exe.new")
+        ok &= check("download with matching sha256", up.download("http://x", dest, good.upper()), True)
+        os.remove(dest)
+        ok &= check("download with wrong sha256 is rejected",
+                    up.download("http://x", dest, "0" * 64), False)
+        ok &= check("mismatch leaves nothing behind",
+                    os.path.exists(dest) or os.path.exists(dest + ".part"), False)
+    finally:
+        urllib.request.urlopen = real_open
+
+    # _fetch_latest(): parses the asset digest
+    api = {"tag_name": "v9.9", "assets": [
+        {"name": "LICENSE", "browser_download_url": "http://x/LICENSE", "digest": "sha256:aaa"},
+        {"name": "Callbooker.exe", "browser_download_url": "http://x/Callbooker.exe",
+         "digest": "sha256:" + good.upper()}]}
+    urllib.request.urlopen = lambda req, timeout=0: FakeResp(json.dumps(api).encode())
+    try:
+        ok &= check("_fetch_latest returns tag, url, lower-case digest",
+                    up._fetch_latest(), ("v9.9", "http://x/Callbooker.exe", good))
+        api["assets"][1].pop("digest")
+        ok &= check("_fetch_latest without a digest -> ''",
+                    up._fetch_latest(), ("v9.9", "http://x/Callbooker.exe", ""))
+    finally:
+        urllib.request.urlopen = real_open
+
+    # check() stores the digest for cached_digest()
+    d = tempfile.mkdtemp()
+    real_fetch = up._fetch_latest
+    up._fetch_latest = lambda: ("v9.9", "http://x/Callbooker.exe", good)
+    try:
+        ok &= check("check() reports the newer release",
+                    up.check("1.0", d), ("v9.9", "http://x/Callbooker.exe"))
+        ok &= check("cached_digest() returns the stored digest", up.cached_digest(d), good)
+    finally:
+        up._fetch_latest = real_fetch
+
+    # backup_name()
+    d = tempfile.mkdtemp()
+    exe = os.path.join(d, "Callbooker.exe")
+    ok &= check("backup_name with a version", up.backup_name(exe, "1.12"),
+                os.path.join(d, "Callbooker_1.12.exe"))
+    ok &= check("backup_name strips a leading v", up.backup_name(exe, "v1.12"),
+                os.path.join(d, "Callbooker_1.12.exe"))
+    ok &= check("backup_name without a version -> .old", up.backup_name(exe, ""), exe + ".old")
+    open(os.path.join(d, "Callbooker_1.12.exe"), "wb").write(b"X")
+    ok &= check("backup_name never overwrites an earlier backup",
+                up.backup_name(exe, "1.12"), os.path.join(d, "Callbooker_1.12_2.exe"))
+
+    # apply_pending(version): old exe kept as Callbooker_<version>.exe
+    d = tempfile.mkdtemp()
+    exe = os.path.join(d, "Callbooker.exe")
+    open(exe, "wb").write(b"OLD")
+    open(exe + ".new", "wb").write(b"NEW")
+    open(exe + ".old", "wb").write(b"LEGACY")
+    real = (up.is_frozen, sys.executable, subprocess.Popen)
+    up.is_frozen = lambda: True
+    sys.executable = exe
+    subprocess.Popen = lambda *a, **k: None
+    try:
+        ok &= check("apply_pending(version) relaunches", up.apply_pending("1.12"), True)
+        ok &= check("new exe in place", open(exe, "rb").read(), b"NEW")
+        ok &= check("old exe kept as Callbooker_1.12.exe",
+                    open(os.path.join(d, "Callbooker_1.12.exe"), "rb").read(), b"OLD")
+        ok &= check("legacy .old leftover tidied", os.path.exists(exe + ".old"), False)
+    finally:
+        up.is_frozen, sys.executable, subprocess.Popen = real
+    return ok
+
+
 def main():
     ok = True
     print("version_tuple")
@@ -176,6 +267,8 @@ def main():
     ok &= swap_tests()
     print("apply_pending()")
     ok &= apply_pending_tests()
+    print("sha256 + versioned backup")
+    ok &= sha_and_backup_tests()
     print("\n" + ("ALL PASS" if ok else "SOME FAILED"))
     sys.exit(0 if ok else 1)
 

@@ -58,6 +58,7 @@ jobs:
         id: defender
         continue-on-error: true
         run: |
+          Update-MpSignature -ErrorAction SilentlyContinue
           Start-MpScan -ScanType CustomScan -ScanPath "$PWD\dist\Callbooker.exe"
           $t = Get-MpThreatDetection
           if ($t) {

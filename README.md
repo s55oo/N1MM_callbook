@@ -1,6 +1,6 @@
 # Callbooker – contest callbook for HF and VHF
 
-> **Version:** 1.15 · Made by **S55OO** with AI assistance.
+> **Version:** 1.16 · Made by **S55OO** with AI assistance.
 > · **Public domain** – see [LICENSE](LICENSE).
 
 A compact always-on-top window that listens to your logger's UDP broadcast
@@ -511,8 +511,13 @@ dev/*.py, dev/*.md      – logger-feed / VHFCtest4WIN notes and sniff tools
 
 Callbooker replaces the earlier separate apps (`n1mm_callbook` for HF,
 `VHFcallbook` for VHF, and before that `n1mm_VHFcallbook` /
-`VHFctest4WinCallbook`). All of their features are in `Callbooker` 1.15.
+`VHFctest4WinCallbook`). All of their features are in `Callbooker` 1.16.
 
+- **1.16** – **fewer antivirus false positives.** `Callbooker.exe` now
+  carries proper Windows version information (company, product, description,
+  version) – an unsigned exe without it looks suspicious to Defender's
+  machine-learning heuristics (`Trojan:Win32/Wacatac.B!ml`) – and the build
+  refreshes Defender's signatures before scanning. No functional change.
 - **1.15** – **see the version and update status.** The version now comes
   right after the name in the title bar (`Callbooker v1.15 - UDP 12060 ...`)
   so a narrow window never cuts it off, and the idle footer shows

@@ -213,7 +213,11 @@ prebuilt PyInstaller bootloader is what AV engines fingerprint - a
 `--onefile` exe built with it was flagged `Trojan:Win32/Wacatac.B!ml`
 (false positive) on download; the source-compiled one runs clean. Don't
 ship a locally built exe unless it was built the same way. `upx=False` in
-the spec (packing is another common trigger). Still unsigned - SignPath
+the spec (packing is another common trigger). The spec also writes
+`build/version_Callbooker.txt` from `__version__` and embeds it
+(`version=`): proper Windows version information (company / product /
+description) makes the exe look far less suspicious to Defender's ML
+heuristics — same trick as N1MMPingPong's `--version-file`. Still unsigned - SignPath
 Foundation (free for OSS) is the next step if it ever gets flagged again.
 
 Local build (dev / quick test only - needs a C compiler for the

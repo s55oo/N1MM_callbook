@@ -238,22 +238,22 @@ docs / `dev/` / comment change is committed and pushed only.
 1. Bump `__version__` in `Callbooker.py`, and `__version__` + `USER_AGENT`
    in `n1mm_callbook.py` (keep them the same number).
 2. README: version banner + a new entry at the top of `## 7. Changelog`.
-3. Run the **Build Callbooker.exe** workflow on the final commit, download
-   its artifact, check the Defender line in the log, copy the exe to the
-   repo root. Attach *that* file to the release (step 7).
+3. Commit + push the version bump and README entry (step 5-6 below).
 4. `git grep` for your QRZ username / password → confirm nothing real
    reached a tracked file.
 5. Commit straight to `main` (no branch).
 6. Push.
-7. Release: `gh` authenticated via `GH_TOKEN` env only (never
-   `gh auth login`), tag `main`, then
-   `gh release create v<X.Y> --verify-tag --latest` attaching
-   `Callbooker.exe`, `Callbooker.cfg.template` and `LICENSE`.
-   Shortcut on Windows: `dev\release.bat <X.Y>` (`dev/release.ps1`) does the
-   tag, the draft-safe create/upload and the publish-as-latest in one go
-   (`-Download` re-fetches the exe from the Actions run set as `-RunId`;
-   run it from the repo root). It exists
-   because `gh release view/edit` cannot see draft releases by tag.
+7. Release: **push the tag** - `git tag v<X.Y> && git push origin v<X.Y>`.
+   The *Build Callbooker.exe* workflow then builds on the clean runner and
+   **publishes the GitHub release itself** (exe + `Callbooker.cfg.template`
+   + `LICENSE`, the README changelog entry and the SHA-256 in the notes,
+   `--latest`). It refuses to release if the tag does not match
+   `__version__` in `Callbooker.py`, or if the Defender scan flags the exe.
+   Check the run's Defender line in the log. A manual `workflow_dispatch`
+   run only builds the artifact. No exe is committed to the repo root.
+   Fallback if the workflow release fails: `dev\release.bat <X.Y>
+   -Download` (`dev/release.ps1`) publishes from a downloaded artifact; it
+   exists because `gh release view/edit` cannot see draft releases by tag.
 
 ## dev/
 
@@ -261,7 +261,7 @@ docs / `dev/` / comment change is committed and pushed only.
   Not under `dev/`, listed here so it isn't missed.
 
 - `dev/release.ps1` / `dev/release.bat` — one-command release publisher
-  (see the release ritual, step 7).
+  (manual fallback; see the release ritual, step 7).
 - `dev/test_render.py` — headless render-logic tests (fake canvas + a
   withdrawn Tk root for font metrics, no network). `make(cls)` builds a
   bare instance; `vh` is a `CallbookerApp` switched to the VHF view.

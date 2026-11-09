@@ -3,8 +3,11 @@ name: Build Callbooker.exe
 # Builds the standalone exe on a clean GitHub Windows runner, with the
 # PyInstaller bootloader compiled from source (the prebuilt one is what
 # antivirus engines fingerprint - Trojan:Win32/Wacatac.B!ml false positives).
-# Result is an artifact of the run; attaching it to a release stays a
-# manual `gh release create` step (see CLAUDE.md, release ritual).
+# Result is an artifact of the run. Pushing a `v*` tag also publishes the
+# GitHub release (exe + cfg template + LICENSE, SHA-256 in the notes) from
+# this clean runner - unless Defender flags the build or the tag does not
+# match `__version__` in Callbooker.py. A manual (workflow_dispatch) run
+# only builds the artifact.
 
 on:
   workflow_dispatch:
@@ -12,7 +15,7 @@ on:
     tags: ["v*"]
 
 permissions:
-  contents: read
+  contents: write   # needed to create the release on a v* tag
 
 env:
   PYINSTALLER_VERSION: "6.22.2"
@@ -42,21 +45,58 @@ jobs:
         run: python -m PyInstaller --noconfirm Callbooker.spec
 
       - name: SHA-256
+        id: sha
         run: |
           $h = (Get-FileHash dist\Callbooker.exe -Algorithm SHA256).Hash
           "SHA-256 $h"
           "**Callbooker.exe** SHA-256: ``$h``" >> $env:GITHUB_STEP_SUMMARY
+          "sha=$h" >> $env:GITHUB_OUTPUT
 
       # Informational: does Defender flag the fresh build? Never fails the job.
+      # (The scan itself never fails the job; a detection blocks the release.)
       - name: Defender scan
+        id: defender
         continue-on-error: true
         run: |
           Start-MpScan -ScanType CustomScan -ScanPath "$PWD\dist\Callbooker.exe"
           $t = Get-MpThreatDetection
-          if ($t) { $t | Format-List ThreatID, Resources; "Defender flagged the build" } else { "Defender: clean" }
+          if ($t) {
+            $t | Format-List ThreatID, Resources
+            "Defender flagged the build"
+            "flagged=true" >> $env:GITHUB_OUTPUT
+          } else {
+            "Defender: clean"
+            "flagged=false" >> $env:GITHUB_OUTPUT
+          }
 
       - uses: actions/upload-artifact@v6
         with:
           name: Callbooker.exe
           path: dist/Callbooker.exe
           if-no-files-found: error
+
+      # Release: only for a pushed v* tag, only if the tag matches the
+      # version in the source and Defender did not flag the exe.
+      - name: Publish release
+        if: startsWith(github.ref, 'refs/tags/v') && steps.defender.outputs.flagged != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+          SHA: ${{ steps.sha.outputs.sha }}
+        run: |
+          $ver = $env:TAG.TrimStart('v')
+          $src = Get-Content Callbooker.py -Raw
+          $verPat = '__version__\s*=\s*"' + [regex]::Escape($ver) + '"'
+          if ($src -notmatch $verPat) {
+            throw "Tag $env:TAG does not match __version__ in Callbooker.py"
+          }
+          # changelog entry for this version from the README (first bullet block)
+          $notes = ""
+          $notePat = '(?ms)^- \*\*' + [regex]::Escape($ver) + '\*\* .*?(?=^\s*$|^- \*\*)'
+          $m = [regex]::Match((Get-Content README.md -Raw), $notePat)
+          if ($m.Success) { $notes = $m.Value.Trim() + "`n`n" }
+          $notes += "Callbooker.exe SHA-256: ``$env:SHA```n`n"
+          $notes += "Built by GitHub Actions on a clean runner (PyInstaller bootloader compiled from source, Defender scan clean). The exe is unsigned and may trigger an antivirus warning; compare the SHA-256 above."
+          Set-Content -Path release-notes.md -Value $notes -Encoding utf8
+          Copy-Item dist\Callbooker.exe Callbooker.exe
+          gh release create $env:TAG --verify-tag --latest --title "Callbooker $ver" --notes-file release-notes.md Callbooker.exe Callbooker.cfg.template LICENSE

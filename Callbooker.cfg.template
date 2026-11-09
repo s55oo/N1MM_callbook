@@ -34,7 +34,7 @@ update_check=yes
 # downloaded in the background (verified against GitHub's SHA-256). The next
 # time you start Callbooker it swaps it in; the old exe stays next to it as
 # Callbooker_<old version>.exe so you can go back. Set to no to download
-# only when you click the ? icon.
+# only when you click the ? icon. The "Check update" button always downloads.
 update_auto=yes
 
 # VHFCtest4WIN pre-log feed (UDP 6767) is ON by default; a callsign from

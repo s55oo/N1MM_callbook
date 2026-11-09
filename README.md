@@ -414,6 +414,12 @@ last `RadioInfo`; it is `null` for VHFCtest4WIN.
 - **Fast lookups:** one kept-alive HTTPS connection per host, gzip'd
   responses – the ~90 ms TLS handshake isn't paid every QSO. Time to fill
   all slots is ~155 ms (median) in testing.
+- **Right-click the window** to choose what the output shows: *Name*,
+  *CQ zone*, *State*, *Locator* (tick any combination, at least one stays
+  on) or *Automatic (default)* for the HF/VHF view per callsign. The
+  choice is remembered in `Callbooker_window.json`.
+- **Check update** (title row, also in the right-click menu) asks GitHub
+  right now – see *Update check* below.
 - The small **help icon** (top-right) opens the project page in your
   browser – **or drives an update** when one is available (below).
 
@@ -434,6 +440,14 @@ release is out.
   while you are mid-contest: the swap only happens when *you* restart.
   `update_auto=no` in `Callbooker.cfg` makes it wait for a click on the
   **? icon** instead.
+- **Check update button (1.18):** the **Check update** link in the title
+  row (or *Check for update now* in the right-click menu) skips the
+  6-hour wait and asks GitHub immediately. If a newer exe exists it is
+  downloaded (even with `update_auto=no`) and the button turns into
+  **Restart to install** – one click relaunches Callbooker onto the new
+  version. The footer reports the outcome: `up to date (v1.18, latest
+  v1.18)`, `v1.19 found – downloading ...`, or `update check failed – no
+  network?`.
 - **running from source:** the title bar shows `· update vX.Y available –
   click ?`, and clicking the **? icon** opens
   [the releases page](https://github.com/s55oo/N1MM_callbook/releases/) –

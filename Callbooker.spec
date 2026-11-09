@@ -71,4 +71,5 @@ exe = EXE(
     entitlements_file=None,
     manifest='manifest.xml',
     version=_VERSION_FILE,
+    icon=os.path.join(_HERE, 'callbooker.ico'),
 )

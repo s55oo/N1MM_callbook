@@ -1,6 +1,6 @@
 # Callbooker – contest callbook for HF and VHF
 
-> **Version:** 1.18 · Made by **S55OO** with AI assistance.
+> **Version:** 1.19 · Made by **S55OO** with AI assistance.
 > · **Public domain** – see [LICENSE](LICENSE).
 
 A compact always-on-top window that listens to your logger's UDP broadcast
@@ -525,8 +525,15 @@ dev/*.py, dev/*.md      – logger-feed / VHFCtest4WIN notes and sniff tools
 
 Callbooker replaces the earlier separate apps (`n1mm_callbook` for HF,
 `VHFcallbook` for VHF, and before that `n1mm_VHFcallbook` /
-`VHFctest4WinCallbook`). All of their features are in `Callbooker` 1.18.
+`VHFctest4WinCallbook`). All of their features are in `Callbooker` 1.19.
 
+- **1.19** – **fewer antivirus false positives, again.** The exe now has a
+  proper application icon (`callbooker.ico`, like N1MMPingPong) on top of
+  the version info, and *Restart to install* relaunches the same way the
+  start-up update swap does (no detached process). Build and release are
+  unchanged: clean GitHub runner, bootloader from source, no UPX, Defender
+  scan before publishing. Still unsigned - if Defender flags it, report a
+  false positive at https://www.microsoft.com/wdsi/filesubmission.
 - **1.18** – **"Check update" button.** A link in the title row (and
   *Check for update now* in the right-click menu) asks GitHub immediately.
   A newer `Callbooker.exe` is downloaded (SHA-256 verified); the button then

@@ -234,7 +234,7 @@ ship a locally built exe unless it was built the same way. `upx=False` in
 the spec (packing is another common trigger). The spec also writes
 `build/version_Callbooker.txt` from `__version__` and embeds it
 (`version=`): proper Windows version information (company / product /
-description) makes the exe look far less suspicious to Defender's ML
+description) and `callbooker.ico` (`icon=` in the spec, like PingPong) make the exe look far less suspicious to Defender's ML
 heuristics — same trick as N1MMPingPong's `--version-file`. Still unsigned - SignPath
 Foundation (free for OSS) is the next step if it ever gets flagged again.
 

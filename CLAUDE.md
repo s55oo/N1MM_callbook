@@ -277,6 +277,11 @@ docs / `dev/` / comment change is committed and pushed only.
    `__version__` in `Callbooker.py`, or if the Defender scan flags the exe.
    Check the run's Defender line in the log. A manual `workflow_dispatch`
    run only builds the artifact. No exe is committed to the repo root.
+   **No local git needed:** dispatch the workflow with `publish=true`
+   (`gh api -X POST repos/s55oo/N1MM_callbook/actions/workflows/build-exe.yml/dispatches -f ref=main -F 'inputs[publish]=true'`)
+   - it builds, runs the same Defender gate and creates `v<__version__>` +
+   the release itself (refuses if that release exists). Used from sessions
+   whose proxy cannot push tags.
    Fallback if the workflow release fails: `dev\release.bat <X.Y>
    -Download` (`dev/release.ps1`) publishes from a downloaded artifact; it
    exists because `gh release view/edit` cannot see draft releases by tag.

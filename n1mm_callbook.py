@@ -16,7 +16,7 @@ the paid XML service when credentials are configured, else its public
 Made by S55OO with AI assistance.
 """
 
-__version__ = "1.19"
+__version__ = "1.20"
 
 import argparse
 import base64
@@ -40,7 +40,7 @@ import xml.etree.ElementTree as ET
 import updater
 from mqtt_client import MqttPublisher, lookup_payload
 
-USER_AGENT = "Mozilla/5.0 Callbooker/1.19"
+USER_AGENT = "Mozilla/5.0 Callbooker/1.20"
 HAMQTH_UA = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
     "(KHTML, like Gecko) Chrome/126.0 Safari/537.36"
@@ -1302,6 +1302,48 @@ def run(app_class, config_name, cache_name, description, always_vhfctest=False):
     root.mainloop()
 
 
+# -- contest-start countdown ---------------------------------------------
+# At the configured local start time the big display shows READY / STEADY / GO
+# (one second each): READY from t-3 s, STEADY from t-2 s, GO from t-1 s,
+# held until one second after the start.
+COUNTDOWN_WORDS = (
+    # (from t seconds, word, colour)
+    (-3.0, "READY", "#ff6b6b"),
+    (-2.0, "STEADY", TEXT_PARTIAL),
+    (-1.0, "GO", "#7CFC00"),
+)
+COUNTDOWN_END = 1.0   # seconds after the start when the display is released
+_START_FORMATS = ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M",
+                  "%Y-%m-%dT%H:%M:%S", "%Y-%m-%dT%H:%M")
+
+
+def parse_contest_start(text):
+    """Local ``YYYY-MM-DD HH:MM[:SS]`` -> epoch seconds, or None when the
+    text is empty or not a full date and time."""
+    text = (text or "").strip()
+    for fmt in _START_FORMATS:
+        try:
+            return time.mktime(time.strptime(text, fmt))
+        except ValueError:
+            continue
+    return None
+
+
+def countdown_word(start_epoch, now):
+    """The (word, colour) to show at *now* for a contest start, or None
+    outside the READY..GO window."""
+    if start_epoch is None:
+        return None
+    t = now - start_epoch
+    if t < COUNTDOWN_WORDS[0][0] or t >= COUNTDOWN_END:
+        return None
+    shown = None
+    for from_t, word, colour in COUNTDOWN_WORDS:
+        if t >= from_t:
+            shown = (word, colour)
+    return shown
+
+
 class CallbookApp:
     # The window + all lookup orchestration. ``CallbookerApp`` in
     # Callbooker.py subclasses this and flips the display attributes below
@@ -1333,6 +1375,8 @@ class CallbookApp:
     )
     _SLOT_ORDER = ("state", "cqzone", "grid")
     _show = None  # operator field choice; set per instance in __init__
+    _cd_word = None          # countdown word on screen, see _countdown_tick
+    _cs_override = False     # contest start came from the menu, not the cfg
     # Append " (Country)" to that name for a non-US (DX) call. Callbooker
     # turns this off in both views - the CQ zone is the multiplier.
     DX_COUNTRY = True
@@ -1418,6 +1462,11 @@ class CallbookApp:
         # The operator's own choice of output fields (right-click menu), a
         # frozenset of SHOW_CHOICES keys, or None = automatic per view.
         self._show = self._load_show()
+        # Contest start (local time): config key contest_start, overridden by
+        # the right-click menu (saved in the window file, "" = cleared).
+        self._contest_start_text = self._load_contest_start(mqtt_settings)
+        self._contest_start = parse_contest_start(self._contest_start_text)
+        self._cd_word = None        # (word, colour) while the countdown shows
         self._apply_show()
         self._update = None
         self._update_inbox = []
@@ -1665,6 +1714,79 @@ class CallbookApp:
 
     # -- choosing what the output shows (right-click menu) --------------
 
+    # -- contest start countdown (READY / STEADY / GO) -------------------
+
+    def _load_contest_start(self, settings):
+        saved = None
+        if self.win_file:
+            try:
+                with open(self.win_file, encoding="utf-8") as fh:
+                    saved = json.load(fh).get("contest_start")
+            except (OSError, ValueError, AttributeError):
+                saved = None
+        if isinstance(saved, str):
+            self._cs_override = True
+            return saved.strip()
+        return str((settings or {}).get("contest_start", "")).strip()
+
+    def _set_contest_start(self):
+        # Right-click menu: ask for a local date + time (blank clears it).
+        from tkinter import simpledialog
+        cur = self._contest_start_text or time.strftime("%Y-%m-%d ")
+        text = simpledialog.askstring(
+            "Contest start",
+            "Local start time, YYYY-MM-DD HH:MM\n"
+            "(READY / STEADY / GO shows in the last 3 seconds; blank = off):",
+            initialvalue=cur, parent=self.root,
+        )
+        if text is None:
+            return
+        text = text.strip()
+        epoch = parse_contest_start(text)
+        if text and epoch is None:
+            self._say("not a date and time - use YYYY-MM-DD HH:MM", 10)
+            return
+        self._contest_start_text, self._contest_start = text, epoch
+        self._cs_override = True
+        self._save_window()
+        if not text:
+            self._say("contest start cleared")
+        elif epoch <= time.time():
+            self._say("contest start set - that time has already passed", 10)
+        else:
+            self._say("contest start set: " + text, 10)
+
+    def _clear_contest_start(self):
+        self._contest_start_text, self._contest_start = "", None
+        self._cs_override = True
+        self._save_window()
+        self._say("contest start cleared")
+
+    def _countdown_tick(self):
+        # Called every _poll_inbox tick (100 ms). While inside the READY..GO
+        # window the word owns the big display; afterwards the normal view
+        # comes back.
+        shown = countdown_word(self._contest_start, time.time())
+        if shown == self._cd_word:
+            return
+        was_active = self._cd_word is not None
+        self._cd_word = shown
+        if shown:
+            self.canvas.configure(bg=COLOR_IDLE)
+            self.canvas.itemconfigure(
+                self.main_id, text=shown[0], fill=shown[1],
+                font=("Segoe UI", FONT_SIZE_BIG, "bold"),
+            )
+        elif was_active:
+            if self.current:
+                self._rerender()
+            else:
+                self.canvas.configure(bg=COLOR_IDLE)
+                self.canvas.itemconfigure(
+                    self.main_id, text="\u2014", fill=TEXT_DEFAULT,
+                    font=("Segoe UI", FONT_SIZE_NAME, "bold"),
+                )
+
     def _load_show(self):
         if not self.win_file:
             return None
@@ -1729,6 +1851,11 @@ class CallbookApp:
             )
         menu.add_separator()
         menu.add_command(label="Automatic (default)", command=self._reset_fields)
+        menu.add_separator()
+        menu.add_command(label="Contest start (READY/STEADY/GO)...",
+                         command=self._set_contest_start)
+        menu.add_command(label="Clear contest start",
+                         command=self._clear_contest_start)
         menu.add_separator()
         menu.add_command(label="Check for update now", command=self._check_now)
         self._field_menu = menu
@@ -1829,6 +1956,8 @@ class CallbookApp:
 
     def _window_state(self):
         state = {"geometry": self.root.geometry()}
+        if self._cs_override:  # only what the menu set; else cfg stays boss
+            state["contest_start"] = self._contest_start_text
         if self._show:
             state["show"] = [k for k, _ in self.SHOW_CHOICES if k in self._show]
         return state
@@ -2190,6 +2319,10 @@ class CallbookApp:
             if ((self._update_auto or self._manual_dl) and updater.is_frozen()
                     and self._update[1] and self._update_state == ""):
                 self._start_update_download(self._update[1])
+        try:
+            self._countdown_tick()
+        except Exception:
+            pass
         _btn = ("Restart to install" if self._update_state == "ready"
                 else "Downloading ..." if self._update_state == "getting"
                 else "Check update")
@@ -2350,6 +2483,8 @@ class CallbookApp:
         return ""
 
     def _render_slots(self, call, slots, pending):
+        if self._cd_word:
+            return  # READY / STEADY / GO owns the display; repainted after
         # Renders the main area at any stage of the lookup. Each slot maps
         # to one source in chain order; a slot still being queried shows
         # "…" and one that answered with nothing shows "·", so results

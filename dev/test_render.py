@@ -403,6 +403,36 @@ def main():
     fm._apply_view_defaults()
     ok &= check("show: automatic restores HF", r(fm, [US, US, US]), "Fred - MA/5")
 
+    # --- contest-start countdown (READY / STEADY / GO)
+    t0 = cb.parse_contest_start("2026-11-14 17:30")
+    ok &= check("countdown: parse ok", t0 is not None, True)
+    ok &= check("countdown: parse with seconds",
+                cb.parse_contest_start("2026-11-14 17:30:15") - t0, 15.0)
+    ok &= check("countdown: time only rejected", cb.parse_contest_start("17:30"), None)
+    ok &= check("countdown: blank rejected", cb.parse_contest_start(""), None)
+    w = lambda dt: (cb.countdown_word(t0, t0 + dt) or (None,))[0]
+    ok &= check("countdown: -3.5 s nothing", w(-3.5), None)
+    ok &= check("countdown: -3.0 s READY", w(-3.0), "READY")
+    ok &= check("countdown: -2.5 s READY", w(-2.5), "READY")
+    ok &= check("countdown: -2.0 s STEADY", w(-2.0), "STEADY")
+    ok &= check("countdown: -1.0 s GO", w(-1.0), "GO")
+    ok &= check("countdown: at start still GO", w(0.0), "GO")
+    ok &= check("countdown: +0.9 s still GO", w(0.9), "GO")
+    ok &= check("countdown: +1.0 s released", w(1.0), None)
+    ok &= check("countdown: no start set", cb.countdown_word(None, 0), None)
+    cd = make(cb.CallbookApp)
+    cd.current = ""
+    cd._contest_start = time.time() + 2.5
+    cd._cd_word = None
+    cd._countdown_tick()
+    ok &= check("countdown tick: shows READY", cd.canvas.text, "READY")
+    cd._contest_start = time.time() + 0.5
+    cd._countdown_tick()
+    ok &= check("countdown tick: shows GO", cd.canvas.text, "GO")
+    cd._contest_start = time.time() - 5
+    cd._countdown_tick()
+    ok &= check("countdown tick: released to idle", cd._cd_word, None)
+
     print("\nALL PASS" if ok else "\nSOME FAILED")
     sys.exit(0 if ok else 1)
 

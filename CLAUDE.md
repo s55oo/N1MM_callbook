@@ -124,6 +124,16 @@ state / grid). `self._show` (frozenset or `None` = automatic) is saved as
 calls it last so the choice beats the HF/VHF defaults. Automatic →
 `_apply_view_defaults()`. Cache/lookups are unaffected (fields are display-only).
 
+### Contest-start countdown
+
+`contest_start` (cfg, or right-click menu → saved as `"contest_start"` in
+`*_window.json`, which wins; `_cs_override`) is parsed by
+`parse_contest_start` (local `YYYY-MM-DD HH:MM[:SS]`, full date required).
+`_countdown_tick` (every `_poll_inbox` tick) asks `countdown_word(start, now)`:
+READY from t-3 s, STEADY t-2, GO t-1, released at t+1. While `_cd_word` is
+set `_render_slots` returns early; on release the call is `_rerender`ed or
+the idle dash restored.
+
 ### Manual update button
 
 `update_btn` (title row) / right-click item → `_check_now`: forced

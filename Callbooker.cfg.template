@@ -87,3 +87,9 @@ update_auto=yes
 # Maximum allowed queue size: 1000.
 # mqtt_reconnect_min=1
 # mqtt_reconnect_max=30
+
+# Contest start countdown. Local date and time of the start; in the last three
+# seconds the big display shows READY, STEADY, GO (one second each, GO held
+# until a second after the start). Also settable from the right-click menu
+# (that choice is remembered and wins over this line). Empty = off.
+# contest_start=2026-11-14 17:30

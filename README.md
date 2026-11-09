@@ -1,6 +1,6 @@
 # Callbooker – contest callbook for HF and VHF
 
-> **Version:** 1.19 · Made by **S55OO** with AI assistance.
+> **Version:** 1.20 · Made by **S55OO** with AI assistance.
 > · **Public domain** – see [LICENSE](LICENSE).
 
 A compact always-on-top window that listens to your logger's UDP broadcast
@@ -418,6 +418,9 @@ last `RadioInfo`; it is `null` for VHFCtest4WIN.
   *CQ zone*, *State*, *Locator* (tick any combination, at least one stays
   on) or *Automatic (default)* for the HF/VHF view per callsign. The
   choice is remembered in `Callbooker_window.json`.
+- **Contest start countdown:** right-click → *Contest start...* (or
+  `contest_start=` in the .cfg) – READY / STEADY / GO in the last 3 seconds
+  before the start (local time, full date + time).
 - **Check update** (title row, also in the right-click menu) asks GitHub
   right now – see *Update check* below.
 - The small **help icon** (top-right) opens the project page in your
@@ -525,8 +528,15 @@ dev/*.py, dev/*.md      – logger-feed / VHFCtest4WIN notes and sniff tools
 
 Callbooker replaces the earlier separate apps (`n1mm_callbook` for HF,
 `VHFcallbook` for VHF, and before that `n1mm_VHFcallbook` /
-`VHFctest4WinCallbook`). All of their features are in `Callbooker` 1.19.
+`VHFctest4WinCallbook`). All of their features are in `Callbooker` 1.20.
 
+- **1.20** – **contest start countdown.** Set the local start date and time
+  (`contest_start=2026-11-14 17:30` in `Callbooker.cfg`, or right-click →
+  *Contest start (READY/STEADY/GO)...*, which is remembered and wins over
+  the .cfg; *Clear contest start* turns it off). In the last three seconds
+  the big display shows **READY** (red), **STEADY** (yellow), **GO** (green)
+  one second each; GO stays until a second after the start, then the normal
+  view returns. A full date and time is required so it can't fire a day late.
 - **1.19** – **fewer antivirus false positives, again.** The exe now has a
   proper application icon (`callbooker.ico`, like N1MMPingPong) on top of
   the version info, and *Restart to install* relaunches the same way the

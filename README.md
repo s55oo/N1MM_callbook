@@ -511,6 +511,7 @@ updater.py              – GitHub-release update check + self-swap (stdlib)
 requirements.txt        – Python runtime dependency (paho-mqtt)
 Callbooker.spec         – PyInstaller build settings (embeds version info + icon)
 callbooker.ico          – application icon of the exe
+docs/Callbooker_quick_reference.pdf – one-page quick reference (colours, menu, ports, cfg)
 .github/workflows/build-exe.yml – release build of the exe (GitHub Actions)
 manifest.xml            – PyInstaller manifest (common controls)
 Callbooker_cache.json   – local lookup cache          (auto-created, gitignored)

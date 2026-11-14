@@ -16,7 +16,7 @@ the paid XML service when credentials are configured, else its public
 Made by S55OO with AI assistance.
 """
 
-__version__ = "1.20"
+__version__ = "1.21"
 
 import argparse
 import base64
@@ -40,7 +40,7 @@ import xml.etree.ElementTree as ET
 import updater
 from mqtt_client import MqttPublisher, lookup_payload
 
-USER_AGENT = "Mozilla/5.0 Callbooker/1.20"
+USER_AGENT = "Mozilla/5.0 Callbooker/1.21"
 HAMQTH_UA = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
     "(KHTML, like Gecko) Chrome/126.0 Safari/537.36"
@@ -70,8 +70,15 @@ HELP_URL = "https://github.com/s55oo/N1MM_callbook/"
 HELP_ICON_B64 = (
     "iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAABFElEQVR4nK2TMYqFMBCGJ49X2HoArQTBTqxsbCysBSutLbyBR4gH8AQBW0/gARQUC/EGVlZ2WmVByBJiIizswBTO+P35J0wQSKIsSyqrY4yRWEMyuGkaGQ9pmj5EkHiqCuZFeDcfvsngIAig6zpY1xUIIWAYxuOfh23TNO90XZcex0HzPKeO41BCCJ2m6bfPkjlG4sxxHEOSJJBl2f2t6zrM8wy2bcN5no9xvqKbtm3vZOF5HmzbBtd1Se/k+3Zhvu9DVVVQFAVQSv8moGka1HV9w8MwKA/5qBqWZcG+79D3/ZtJUAosywJRFL3CtwDGGLHl4CMMQxjHUQmyrUSs8LbCKvgxgsyJDObj/x6TKCKry57zD5uWhA5j8tjMAAAAAElFTkSuQmCC"
 )
-COLOR_IDLE = "#3a3a3a"
-COLOR_ACTIVE = "#1f6feb"
+# Window palette: a dark, flat look with one blue accent.
+UI_BG = "#12151a"        # window background
+UI_BORDER = "#2b313b"    # thin frame round the result panel
+UI_MUTED = "#7d8796"     # title / help
+UI_FOOTER = "#a3adbb"    # footer text
+UI_LINK = "#5ea1ff"      # "Check update"
+UI_HOVER = "#ffffff"
+COLOR_IDLE = "#1b2029"   # result panel at rest
+COLOR_ACTIVE = "#1a56c4" # result panel while a call is on screen
 TEXT_DEFAULT = "white"
 TEXT_AGREE = "#b9f5b0"  # very light green: three sources returned the same value
 TEXT_PARTIAL = "#ffe066"  # yellow: two sources returned the same value
@@ -1672,44 +1679,56 @@ class CallbookApp:
     def _build(self):
         self._refresh_title()
         self.root.attributes("-topmost", True)
-        frame = tk.Frame(self.root, padx=6, pady=4)
-        frame.pack()
-        top = tk.Frame(frame)
-        top.pack(fill=tk.X)
+        self.root.configure(bg=UI_BG)
+        frame = tk.Frame(self.root, bg=UI_BG, padx=10, pady=8)
+        frame.pack(fill=tk.BOTH, expand=True)
+
+        # Top bar: app name on the left, quiet links on the right.
+        top = tk.Frame(frame, bg=UI_BG)
+        top.pack(fill=tk.X, pady=(0, 6))
         tk.Label(
-            top, text=self.APP_TITLE, font=("Segoe UI", 8, "bold")
+            top, text=self.APP_TITLE.upper(), bg=UI_BG, fg=UI_MUTED,
+            font=("Segoe UI Semibold", 8),
         ).pack(side=tk.LEFT)
-        self.help_icon = tk.PhotoImage(
-            data=base64.b64decode(HELP_ICON_B64.encode("ascii"))
+        # "?" help link (a text glyph: a bitmap would show its own background
+        # on the dark window).
+        self.help_link = tk.Label(
+            top, text="?", bg=UI_BG, fg=UI_MUTED, cursor="hand2",
+            font=("Segoe UI Semibold", 10), padx=4,
         )
-        self.help_link = tk.Label(top, image=self.help_icon, cursor="hand2")
         self.help_link.pack(side=tk.RIGHT)
         self.help_link.bind("<Button-1>", lambda e: self._open_help())
         self.update_btn = tk.Label(
-            top, text="Check update", font=("Segoe UI", 8, "underline"),
-            fg="#1a5fb4", cursor="hand2",
+            top, text="Check update", bg=UI_BG, fg=UI_LINK, cursor="hand2",
+            font=("Segoe UI", 8),
         )
-        self.update_btn.pack(side=tk.RIGHT, padx=(0, 8))
+        self.update_btn.pack(side=tk.RIGHT, padx=(0, 6))
         self.update_btn.bind("<Button-1>", lambda e: self._check_now())
+        for w, normal in ((self.help_link, UI_MUTED), (self.update_btn, UI_LINK)):
+            w.bind("<Enter>", lambda e, w=w: w.configure(fg=UI_HOVER))
+            w.bind("<Leave>", lambda e, w=w, c=normal: w.configure(fg=c))
 
+        # The result panel.
         self.canvas = tk.Canvas(
             frame,
             width=360,
-            height=64,
+            height=72,
             bg=COLOR_IDLE,
             highlightthickness=1,
-            highlightbackground="#888888",
+            highlightbackground=UI_BORDER,
         )
         self.canvas.pack(fill=tk.X)
         self.main_id = self.canvas.create_text(
-            180, 32, text="—", font=("Segoe UI", FONT_SIZE_NAME, "bold"), fill="white"
+            180, 36, text="—", font=("Segoe UI", FONT_SIZE_NAME, "bold"), fill="white"
         )
         self.canvas.bind("<Configure>", self._recenter_text)
 
+        # Footer: worked call + where the answer came from.
         self.call_label = tk.Label(
-            frame, text="", font=("Segoe UI", FONT_SIZE_FOOTER), justify=tk.CENTER
+            frame, text="", bg=UI_BG, fg=UI_FOOTER,
+            font=("Segoe UI", 9), justify=tk.CENTER, pady=2,
         )
-        self.call_label.pack(fill=tk.X)
+        self.call_label.pack(fill=tk.X, pady=(6, 0))
         self._build_field_menu()
 
     # -- choosing what the output shows (right-click menu) --------------
@@ -1842,7 +1861,12 @@ class CallbookApp:
         self._show_vars = {
             k: tk.BooleanVar(master=self.root) for k, _ in self.SHOW_CHOICES
         }
-        menu = tk.Menu(self.root, tearoff=0)
+        menu = tk.Menu(
+            self.root, tearoff=0, bg=COLOR_IDLE, fg="#e6edf3",
+            activebackground=COLOR_ACTIVE, activeforeground="white",
+            disabledforeground=UI_MUTED, selectcolor="#5ea1ff", bd=0,
+            font=("Segoe UI", 9),
+        )
         menu.add_command(label="Show in the output:", state="disabled")
         for key, label in self.SHOW_CHOICES:
             menu.add_checkbutton(

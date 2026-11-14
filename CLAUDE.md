@@ -115,6 +115,14 @@ walks `FONT_LADDER` (26 … 12) and returns the first size whose
 `winfo_reqwidth` before) — `Font`s cached in `self._font_cache`; canvas is
 `width=360` to give `FONT_SIZE_BIG` room.
 
+### Look
+
+All colours live in the `UI_*` / `COLOR_IDLE` / `COLOR_ACTIVE` / `TEXT_*`
+constants at the top of `n1mm_callbook.py`; `_build` applies them (dark flat
+window, text-glyph `?`, hover colours, dark `tk.Menu`). Restyle there, not
+in the render code - `COLOR_ACTIVE` / `TEXT_AGREE` / `TEXT_PARTIAL` contrast
+is tuned together.
+
 ### Output-field menu
 
 Right-click (`_build_field_menu`) toggles `SHOW_CHOICES` (name / cqzone /

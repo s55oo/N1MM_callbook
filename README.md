@@ -1,6 +1,6 @@
 # Callbooker – contest callbook for HF and VHF
 
-> **Version:** 1.20 · Made by **S55OO** with AI assistance.
+> **Version:** 1.21 · Made by **S55OO** with AI assistance.
 > · **Public domain** – see [LICENSE](LICENSE).
 
 A compact always-on-top window that listens to your logger's UDP broadcast
@@ -536,8 +536,14 @@ dev/*.py, dev/*.md      – logger-feed / VHFCtest4WIN notes and sniff tools
 
 Callbooker replaces the earlier separate apps (`n1mm_callbook` for HF,
 `VHFcallbook` for VHF, and before that `n1mm_VHFcallbook` /
-`VHFctest4WinCallbook`). All of their features are in `Callbooker` 1.20.
+`VHFctest4WinCallbook`). All of their features are in `Callbooker` 1.21.
 
+- **1.21** – **new look.** Dark, flat window with a single blue accent: a
+  quiet title bar (name, *Check update*, `?`), a taller result panel with a
+  thin border, a softer footer line, hover highlights on the links and a
+  matching dark right-click menu. Same layout and behaviour as before - only
+  colours, spacing and fonts changed (the `?` is now a text glyph instead of
+  a bitmap).
 - **1.20** – **contest start countdown.** Set the local start date and time
   (`contest_start=2026-11-14 17:30` in `Callbooker.cfg`, or right-click →
   *Contest start (READY/STEADY/GO)...*, which is remembered and wins over

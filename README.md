@@ -1,6 +1,6 @@
 # Callbooker – contest callbook for HF and VHF
 
-> **Version:** 1.21 · Made by **S55OO** with AI assistance.
+> **Version:** 1.22 · Made by **S55OO** with AI assistance.
 > · **Public domain** – see [LICENSE](LICENSE).
 
 A compact always-on-top window that listens to your logger's UDP broadcast
@@ -536,8 +536,10 @@ dev/*.py, dev/*.md      – logger-feed / VHFCtest4WIN notes and sniff tools
 
 Callbooker replaces the earlier separate apps (`n1mm_callbook` for HF,
 `VHFcallbook` for VHF, and before that `n1mm_VHFcallbook` /
-`VHFctest4WinCallbook`). All of their features are in `Callbooker` 1.21.
+`VHFctest4WinCallbook`). All of their features are in `Callbooker` 1.22.
 
+- **1.22** – hovering the `?` shows a small comment: *S55OO software*, the
+  version and what a click does.
 - **1.21** – **new look.** Dark, flat window with a single blue accent: a
   quiet title bar (name, *Check update*, `?`), a taller result panel with a
   thin border, a softer footer line, hover highlights on the links and a

@@ -16,7 +16,7 @@ the paid XML service when credentials are configured, else its public
 Made by S55OO with AI assistance.
 """
 
-__version__ = "1.21"
+__version__ = "1.22"
 
 import argparse
 import base64
@@ -40,7 +40,7 @@ import xml.etree.ElementTree as ET
 import updater
 from mqtt_client import MqttPublisher, lookup_payload
 
-USER_AGENT = "Mozilla/5.0 Callbooker/1.21"
+USER_AGENT = "Mozilla/5.0 Callbooker/1.22"
 HAMQTH_UA = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
     "(KHTML, like Gecko) Chrome/126.0 Safari/537.36"
@@ -1708,6 +1708,10 @@ class CallbookApp:
             w.bind("<Enter>", lambda e, w=w: w.configure(fg=UI_HOVER))
             w.bind("<Leave>", lambda e, w=w, c=normal: w.configure(fg=c))
 
+        self._tip = None
+        self.help_link.bind("<Enter>", self._show_help_tip, add="+")
+        self.help_link.bind("<Leave>", self._hide_help_tip, add="+")
+
         # The result panel.
         self.canvas = tk.Canvas(
             frame,
@@ -1909,6 +1913,36 @@ class CallbookApp:
         self._apply_view_defaults()
         self._rerender()
         self._save_window()
+
+    def _show_help_tip(self, event=None):
+        # Hover comment on the "?": who made it and what a click does.
+        self._hide_help_tip()
+        tip = tk.Toplevel(self.root)
+        tip.wm_overrideredirect(True)
+        try:
+            tip.attributes("-topmost", True)
+        except tk.TclError:
+            pass
+        tk.Label(
+            tip, text="S55OO software\nCallbooker v{}\nClick: project page".format(
+                self.VERSION),
+            bg=COLOR_IDLE, fg="#e6edf3", justify=tk.LEFT,
+            font=("Segoe UI", 9), padx=8, pady=5,
+            highlightthickness=1, highlightbackground=UI_BORDER,
+        ).pack()
+        x = self.help_link.winfo_rootx() - 90
+        y = self.help_link.winfo_rooty() + self.help_link.winfo_height() + 4
+        tip.wm_geometry("+{}+{}".format(max(x, 0), y))
+        self._tip = tip
+
+    def _hide_help_tip(self, event=None):
+        tip = getattr(self, "_tip", None)
+        self._tip = None
+        if tip is not None:
+            try:
+                tip.destroy()
+            except tk.TclError:
+                pass
 
     def _recenter_text(self, event):
         self.canvas.coords(self.main_id, event.width / 2.0, event.height / 2.0)

@@ -1,6 +1,6 @@
 # Callbooker – contest callbook for HF and VHF
 
-> **Version:** 1.22 · Made by **S55OO** with AI assistance.
+> **Version:** 1.23 · Made by **S55OO** with AI assistance.
 > · **Public domain** – see [LICENSE](LICENSE).
 
 A compact always-on-top window that listens to your logger's UDP broadcast
@@ -537,6 +537,9 @@ dev/*.py, dev/*.md      – logger-feed / VHFCtest4WIN notes and sniff tools
 Callbooker replaces the earlier separate apps (`n1mm_callbook` for HF,
 `VHFcallbook` for VHF, and before that `n1mm_VHFcallbook` /
 `VHFctest4WinCallbook`). All of their features are in `Callbooker` 1.22.
+
+- **1.23** – restore QRZ XML lookups after the service moved to
+  `xmldata.qrz.com`; accept both XML namespaces and read session errors.
 
 - **1.22** – hovering the `?` shows a small comment: *S55OO software*, the
   version and what a click does.

@@ -16,7 +16,7 @@ the paid XML service when credentials are configured, else its public
 Made by S55OO with AI assistance.
 """
 
-__version__ = "1.25"
+__version__ = "1.26"
 
 import argparse
 import functools
@@ -40,7 +40,7 @@ import xml.etree.ElementTree as ET
 import updater
 from mqtt_client import MqttPublisher, lookup_payload
 
-USER_AGENT = "Mozilla/5.0 Callbooker/1.25"
+USER_AGENT = "Mozilla/5.0 Callbooker/1.26"
 HAMQTH_UA = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
     "(KHTML, like Gecko) Chrome/126.0 Safari/537.36"
@@ -998,18 +998,18 @@ def _qrz_login(username, password, timeout=15):
     is valid for ~1 hour / 500 lookups; on failure the QRZ error text.
     """
     query = urllib.parse.urlencode({"username": username, "password": password})
-    url = "https://xml.qrz.com/xml/current/?" + query
+    url = "https://xmldata.qrz.com/xml/current/?" + query
     raw = http_get(url, {"User-Agent": USER_AGENT}, timeout)
     if raw is None:
         return None, "network error"
     # The QRZ XML carries a default namespace; drop it so the plain tag
     # lookups below (Error, Session/Key, ...) work without namespace paths.
-    raw = raw.replace(' xmlns="http://xml.qrz.com"', "", 1)
+    raw = re.sub(r' xmlns="https?://(?:xml|xmldata)\.qrz\.com"', "", raw, count=1)
     try:
         root = ET.fromstring(raw)
     except ET.ParseError:
         return None, "parse error"
-    err = root.findtext("Error") or ""
+    err = root.findtext("Session/Error") or root.findtext("Error") or ""
     if err:
         return None, err
     return (root.findtext("Session/Key") or "").strip() or None, ""
@@ -1066,17 +1066,17 @@ def _qrz_xml_lookup(call, username, password, timeout=15):
         _qrz_session_save()
 
     params = {"s": key, "callsign": call.upper()}
-    url = "https://xml.qrz.com/xml/current/?" + urllib.parse.urlencode(params)
+    url = "https://xmldata.qrz.com/xml/current/?" + urllib.parse.urlencode(params)
     raw = http_get(url, {"User-Agent": USER_AGENT}, timeout)
     if raw is None:
         return None
-    raw = raw.replace(' xmlns="http://xml.qrz.com"', "", 1)
+    raw = re.sub(r' xmlns="https?://(?:xml|xmldata)\.qrz\.com"', "", raw, count=1)
     try:
         root = ET.fromstring(raw)
     except ET.ParseError:
         return None
     _QRZ_SUBEXP = (root.findtext("Session/SubExp") or "").strip()
-    err = root.findtext("Error") or ""
+    err = root.findtext("Session/Error") or root.findtext("Error") or ""
     if err:
         if "session" in err.lower():
             _QRZ_SESSION.pop(username, None)  # drop stale key, retry next time

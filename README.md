@@ -1,6 +1,6 @@
 # Callbooker – contest callbook for HF and VHF
 
-> **Version:** 1.25 · Made by **S55OO** with AI assistance.
+> **Version:** 1.26 · Made by **S55OO** with AI assistance.
 > · **Public domain** – see [LICENSE](LICENSE).
 
 A compact always-on-top window that listens to your logger's UDP broadcast
@@ -543,6 +543,12 @@ Callbooker replaces the earlier separate apps (`n1mm_callbook` for HF,
 `VHFcallbook` for VHF, and before that `n1mm_VHFcallbook` /
 `VHFctest4WinCallbook`). All of their features are in `Callbooker` 1.25.
 
+- **1.26** – **QRZ XML lookups work again.** QRZ moved its XML service to
+  `xmldata.qrz.com`; the old host only redirects (Callbooker does not follow
+  redirects) and the reply uses a new XML namespace, so logins and lookups
+  silently failed. Callbooker now calls the new host, accepts both namespaces
+  and reads errors from `Session/Error`, so an expired session is dropped
+  and re-logged-in. Fix by S53ZO ([PR #3](https://github.com/s55oo/N1MM_callbook/pull/3)).
 - **1.25** – icon redrawn in the same style as S55OO's other apps: a
   thick white **Q** on the navy-to-blue rounded square, with the orange dot
   and tan radio arcs.

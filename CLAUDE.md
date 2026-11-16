@@ -323,6 +323,9 @@ docs / `dev/` / comment change is committed and pushed only.
 - `.github/workflows/build-exe.yml` — the release-exe build (see Build).
   Not under `dev/`, listed here so it isn't missed.
 
+- `dev/make_icon.py` — draws `callbooker.ico` (Q on blue, all sizes 16-256)
+  with Pillow: `python dev/make_icon.py callbooker.ico`. The window uses the
+  same icon via `_set_window_icon` (exe resource when frozen).
 - `dev/release.ps1` / `dev/release.bat` — one-command release publisher
   (manual fallback; see the release ritual, step 7).
 - `dev/test_render.py` — headless render-logic tests (fake canvas + a

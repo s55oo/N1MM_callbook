@@ -16,7 +16,7 @@ the paid XML service when credentials are configured, else its public
 Made by S55OO with AI assistance.
 """
 
-__version__ = "1.23"
+__version__ = "1.24"
 
 import argparse
 import functools
@@ -40,7 +40,7 @@ import xml.etree.ElementTree as ET
 import updater
 from mqtt_client import MqttPublisher, lookup_payload
 
-USER_AGENT = "Mozilla/5.0 Callbooker/1.23"
+USER_AGENT = "Mozilla/5.0 Callbooker/1.24"
 HAMQTH_UA = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
     "(KHTML, like Gecko) Chrome/126.0 Safari/537.36"
@@ -1763,6 +1763,7 @@ class CallbookApp:
     def _build(self):
         self._refresh_title()
         self.root.attributes("-topmost", True)
+        self._set_window_icon()
         self.root.configure(bg=UI_BG)
         frame = tk.Frame(self.root, bg=UI_BG, padx=10, pady=8)
         frame.pack(fill=tk.BOTH, expand=True)
@@ -1997,6 +1998,21 @@ class CallbookApp:
         self._apply_view_defaults()
         self._rerender()
         self._save_window()
+
+    def _set_window_icon(self):
+        # Title bar / taskbar icon. The frozen exe already carries
+        # callbooker.ico as a resource, so point Tk at the exe itself;
+        # from source use the .ico next to the scripts.
+        try:
+            if getattr(sys, "frozen", False):
+                src = sys.executable
+            else:
+                src = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                   "callbooker.ico")
+            if sys.platform == "win32" and os.path.exists(src):
+                self.root.iconbitmap(default=src)
+        except Exception:
+            log_error("window icon")
 
     def _show_help_tip(self, event=None):
         # Hover comment on the "?": who made it and what a click does.

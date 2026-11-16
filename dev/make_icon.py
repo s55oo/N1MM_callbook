@@ -1,50 +1,57 @@
-import sys
-from PIL import Image, ImageDraw, ImageFilter
+"""Callbooker icon - Q in the same style as the family's C icon:
+blue gradient rounded square, thick white letter, orange dot, tan radio arcs.
+Usage: python make_icon.py out.ico"""
+import math, sys
+from PIL import Image, ImageDraw
+
 out = sys.argv[1]
 N = 1024
-def lerp(a, b, t): return tuple(int(a[i] + (b[i]-a[i])*t) for i in range(3))
-# background: rounded square, vertical navy -> blue gradient
-grad = Image.new("RGB", (N, N))
-gd = ImageDraw.Draw(grad)
-top, bot = (30, 86, 196), (12, 28, 66)
-for y in range(N):
-    gd.line([(0, y), (N, y)], fill=lerp(top, bot, y / (N-1)))
-mask = Image.new("L", (N, N), 0)
-ImageDraw.Draw(mask).rounded_rectangle((24, 24, N-24, N-24), radius=200, fill=255)
+TOP, BOT = (17, 45, 88), (22, 98, 182)        # navy -> blue, darker at the top
+ORANGE, TAN, WHITE = (255, 152, 0), (201, 160, 98), (255, 255, 255)
+
+def lerp(a, b, t): return tuple(round(a[i] + (b[i] - a[i]) * t) for i in range(3))
+
 img = Image.new("RGBA", (N, N), (0, 0, 0, 0))
+grad = Image.new("RGB", (N, N)); gd = ImageDraw.Draw(grad)
+for y in range(N):
+    gd.line([(0, y), (N, y)], fill=lerp(TOP, BOT, y / (N - 1)))
+mask = Image.new("L", (N, N), 0)
+ImageDraw.Draw(mask).rounded_rectangle((0, 0, N - 1, N - 1), radius=180, fill=255)
 img.paste(grad, (0, 0), mask)
-# soft top highlight
-hl = Image.new("L", (N, N), 0)
-ImageDraw.Draw(hl).ellipse((-200, -620, N+200, 420), fill=46)
-hl = hl.filter(ImageFilter.GaussianBlur(60)); hl = Image.composite(hl, Image.new("L", (N, N), 0), mask)
-img = Image.alpha_composite(img, Image.merge("RGBA", (Image.new("L",(N,N),255),)*3 + (hl,)))
-# the Q: thick ring + diagonal tail
-cx, cy, R, w = 500, 486, 300, 112
-shadow = Image.new("L", (N, N), 0)
-sd = ImageDraw.Draw(shadow)
-def q(d, fill_ring, fill_tail, dx=0, dy=0):
-    d.ellipse((cx-R+dx, cy-R+dy, cx+R+dx, cy+R+dy), outline=fill_ring, width=w)
-    # tail: thick rounded line from inside the ring out to bottom-right
-    x0, y0, x1, y1 = cx+70+dx, cy+90+dy, cx+300+dx, cy+320+dy
-    d.line([(x0, y0), (x1, y1)], fill=fill_tail, width=118)
-    r = 59
-    d.ellipse((x1-r, y1-r, x1+r, y1+r), fill=fill_tail)
-    d.ellipse((x0-r, y0-r, x0+r, y0+r), fill=fill_tail)
-q(sd, 120, 120, 10, 16)
-shadow = shadow.filter(ImageFilter.GaussianBlur(18))
-img = Image.alpha_composite(img, Image.merge("RGBA", (Image.new("L",(N,N),0),)*3 + (shadow,)))
-layer = Image.new("RGBA", (N, N), (0, 0, 0, 0))
-ld = ImageDraw.Draw(layer)
-q(ld, (255, 255, 255, 255), (124, 252, 0, 255))
-# keep the ring white where the tail crosses it: redraw ring segment over tail start? no - tail on top reads as Q
-img = Image.alpha_composite(img, layer)
+d = ImageDraw.Draw(img)
+
+# the Q: full white ring (left of centre, like the C) ...
+cx, cy, R, w = 395, 495, 255, 124
+d.ellipse((cx - R, cy - R, cx + R, cy + R), outline=WHITE, width=w)
+# ... with a white tail out to the bottom-right
+a = math.radians(45)
+x0, y0 = cx + (R - w / 2) * math.cos(a), cy + (R - w / 2) * math.sin(a)
+x1, y1 = cx + (R + 95) * math.cos(a), cy + (R + 95) * math.sin(a)
+tw = 120
+d.line([(x0, y0), (x1, y1)], fill=WHITE, width=tw)
+for x, y in ((x0, y0), (x1, y1)):
+    d.ellipse((x - tw / 2, y - tw / 2, x + tw / 2, y + tw / 2), fill=WHITE)
+
+# orange dot + two tan radio arcs, upper right (same as the C icon)
+dx, dy, dr = 745, 455, 84
+d.ellipse((dx - dr, dy - dr, dx + dr, dy + dr), fill=ORANGE)
+for r, aw in ((150, 30), (215, 30)):
+    d.arc((dx - r, dy - r, dx + r, dy + r), start=-38, end=38, fill=TAN, width=aw)
+
 sizes = [256, 128, 64, 48, 32, 24, 16]
 frames = [img.resize((s, s), Image.LANCZOS) for s in sizes]
 frames[0].save(out, sizes=[(s, s) for s in sizes], append_images=frames[1:])
-img.resize((512, 512), Image.LANCZOS).save(out.replace(".ico", "_preview.png"))
-# small-size strip for checking legibility
-strip = Image.new("RGBA", (16+24+32+48+64+5*12+12, 76), (240, 240, 240, 255))
-x = 12
-for s in (16, 24, 32, 48, 64):
-    strip.alpha_composite(img.resize((s, s), Image.LANCZOS), (x, 76 - s - 6)); x += s + 12
-strip.resize((strip.width*3, strip.height*3), Image.NEAREST).save(out.replace(".ico", "_small.png"))
+
+# preview sheet like the C icon's: dark row of all sizes + light row of small ones
+sheet = Image.new("RGBA", (900, 330), (32, 32, 32, 255))
+x = 10
+for s in (16, 20, 24, 32, 48, 64, 96, 128, 256):
+    if s == 256:
+        sheet.alpha_composite(img.resize((240, 240), Image.LANCZOS), (x, 18))
+    else:
+        sheet.alpha_composite(img.resize((s, s), Image.LANCZOS), (x, 10)); x += s + 12
+ImageDraw.Draw(sheet).rectangle((0, 270, 900, 330), fill=(242, 242, 242, 255))
+x = 10
+for s in (16, 24, 32, 48):
+    sheet.alpha_composite(img.resize((s, s), Image.LANCZOS), (x, 284)); x += s + 18
+sheet.save(out.replace(".ico", "_sheet.png"))

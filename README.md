@@ -1,6 +1,6 @@
 # Callbooker – contest callbook for HF and VHF
 
-> **Version:** 1.24 · Made by **S55OO** with AI assistance.
+> **Version:** 1.25 · Made by **S55OO** with AI assistance.
 > · **Public domain** – see [LICENSE](LICENSE).
 
 A compact always-on-top window that listens to your logger's UDP broadcast
@@ -541,8 +541,11 @@ dev/*.py, dev/*.md      – logger-feed / VHFCtest4WIN notes and sniff tools
 
 Callbooker replaces the earlier separate apps (`n1mm_callbook` for HF,
 `VHFcallbook` for VHF, and before that `n1mm_VHFcallbook` /
-`VHFctest4WinCallbook`). All of their features are in `Callbooker` 1.24.
+`VHFctest4WinCallbook`). All of their features are in `Callbooker` 1.25.
 
+- **1.25** – icon redrawn in the same style as S55OO's other apps: a
+  thick white **Q** on the navy-to-blue rounded square, with the orange dot
+  and tan radio arcs.
 - **1.24** – **new icon:** a white **Q** with a green tail on a blue
   rounded square (it doubles as a magnifying glass - a lookup). Used for
   the exe and now also the window's title bar and taskbar button.

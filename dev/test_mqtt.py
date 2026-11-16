@@ -284,6 +284,9 @@ def main():
         def configure(self, **kwargs):
             self.texts.append(kwargs.get("text"))
 
+        def cget(self, key):
+            return self.texts[-1] if self.texts else ""
+
     context = {
         "mode": "vhf", "feed": "vhfctest4win", "frequency_mhz": None,
         "source_labels": ("QRZ", "QRZCQ"),
@@ -341,6 +344,16 @@ def main():
     live_app._update = None
     live_app._update_state = ""
     live_app._title_key = (False, "")
+    # the title-row button / footer-message / countdown state _poll_inbox reads
+    live_app.update_btn = FakeLabel()
+    live_app.update_btn.texts.append("Check update")
+    live_app._manual_msg = ""
+    live_app._manual_until = 0.0
+    live_app._manual_dl = False
+    live_app._update_auto = True
+    live_app._precheck_active = False
+    live_app._idle_text = ""
+    live_app._contest_start = None
     live_app._refresh_title = lambda: None
     live_app.call_label = FakeLabel()
     live_app.cache = FakeCache()

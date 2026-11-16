@@ -16,10 +16,9 @@ the paid XML service when credentials are configured, else its public
 Made by S55OO with AI assistance.
 """
 
-__version__ = "1.22"
+__version__ = "1.23"
 
 import argparse
-import base64
 import functools
 import gzip
 import http.client
@@ -32,6 +31,7 @@ import socket
 import sys
 import threading
 import time
+import traceback
 import tkinter as tk
 import tkinter.font as tkfont
 import urllib.parse
@@ -40,7 +40,7 @@ import xml.etree.ElementTree as ET
 import updater
 from mqtt_client import MqttPublisher, lookup_payload
 
-USER_AGENT = "Mozilla/5.0 Callbooker/1.22"
+USER_AGENT = "Mozilla/5.0 Callbooker/1.23"
 HAMQTH_UA = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
     "(KHTML, like Gecko) Chrome/126.0 Safari/537.36"
@@ -67,9 +67,6 @@ LAN_SYNC_SELF_HOLD = 10      # don't answer others' sync while catching up ourse
 LAN_SYNC_RATE = 200         # entry packets per second when replaying the cache
 LAN_SYNC_CAP = 1000         # most entries a peer will replay for one sync
 HELP_URL = "https://github.com/s55oo/N1MM_callbook/"
-HELP_ICON_B64 = (
-    "iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAABFElEQVR4nK2TMYqFMBCGJ49X2HoArQTBTqxsbCysBSutLbyBR4gH8AQBW0/gARQUC/EGVlZ2WmVByBJiIizswBTO+P35J0wQSKIsSyqrY4yRWEMyuGkaGQ9pmj5EkHiqCuZFeDcfvsngIAig6zpY1xUIIWAYxuOfh23TNO90XZcex0HzPKeO41BCCJ2m6bfPkjlG4sxxHEOSJJBl2f2t6zrM8wy2bcN5no9xvqKbtm3vZOF5HmzbBtd1Se/k+3Zhvu9DVVVQFAVQSv8moGka1HV9w8MwKA/5qBqWZcG+79D3/ZtJUAosywJRFL3CtwDGGLHl4CMMQxjHUQmyrUSs8LbCKvgxgsyJDObj/x6TKCKry57zD5uWhA5j8tjMAAAAAElFTkSuQmCC"
-)
 # Window palette: a dark, flat look with one blue accent.
 UI_BG = "#12151a"        # window background
 UI_BORDER = "#2b313b"    # thin frame round the result panel
@@ -799,7 +796,7 @@ class LANShare:
             try:
                 self._handle(data, addr[0])
             except Exception:
-                pass
+                log_error("lan packet")
         try:
             self._sock.close()
         except OSError:
@@ -1182,10 +1179,77 @@ def clamp_cache_days(days):
     return max(1, min(days, MAX_CACHE_DAYS))
 
 
+# -- error log ---------------------------------------------------------------
+# Callbooker is a windowed exe with no console, and its loops must never die
+# on an unexpected error - so those errors are caught. They are written here
+# instead of vanishing: Callbooker.log next to the .cfg, created only when
+# something actually goes wrong (log=no in the .cfg turns it off).
+LOG_MAX_BYTES = 256 * 1024
+LOG_REPEAT_S = 60.0     # the same error is written at most once per minute
+_log_path = ""
+_log_secrets = ()
+_log_seen = {}
+_log_lock = threading.Lock()
+
+
+def set_log(path, secrets=()):
+    """Point the error log at *path* ("" = off). *secrets* (the QRZ / MQTT
+    passwords) are blanked out of anything written."""
+    global _log_path, _log_secrets
+    _log_path = path or ""
+    _log_secrets = tuple(x for x in secrets if x and len(x) >= 3)
+
+
+def log_error(where, exc=None):
+    """Append the current (or given) exception to the error log. Never
+    raises; repeats of the same error are throttled."""
+    try:
+        if not _log_path:
+            return
+        if exc is None:
+            text = traceback.format_exc()
+        else:
+            text = "".join(traceback.format_exception(
+                type(exc), exc, exc.__traceback__))
+        last = text.strip().splitlines()[-1] if text.strip() else ""
+        key = (where, last)
+        now = time.time()
+        with _log_lock:
+            if now - _log_seen.get(key, 0) < LOG_REPEAT_S:
+                return
+            if len(_log_seen) > 200:
+                _log_seen.clear()
+            _log_seen[key] = now
+            for secret in _log_secrets:
+                text = text.replace(secret, "***")
+            try:
+                if os.path.getsize(_log_path) > LOG_MAX_BYTES:
+                    os.replace(_log_path, _log_path + ".old")
+            except OSError:
+                pass
+            with open(_log_path, "a", encoding="utf-8") as fh:
+                fh.write("{} v{} [{}]\n{}\n".format(
+                    time.strftime("%Y-%m-%d %H:%M:%S"), __version__, where,
+                    text.rstrip()))
+                fh.write("\n")
+    except Exception:
+        pass
+
+
+def _strip_inline_comment(key, val):
+    # "yes   # explanation" -> "yes". A '#' only starts a comment after
+    # whitespace, and password values are left alone (a password may
+    # legitimately contain " #").
+    if key.endswith("password"):
+        return val
+    return re.split(r"\s+#", val, maxsplit=1)[0].strip()
+
+
 def load_config(path):
     """Parse the small ``key = value`` .cfg file.
 
-    Blank lines, ``#`` comments and ``[section]`` headers are ignored.
+    Blank lines, ``#`` comments and ``[section]`` headers are ignored, and
+    so is a trailing ``  # comment`` after a value (except on password keys).
     Returns a lower-cased dict; a missing or unreadable file yields ``{}``.
     """
     settings = {}
@@ -1196,7 +1260,8 @@ def load_config(path):
                 if not line or line.startswith(("#", "[")) or "=" not in line:
                     continue
                 key, _, val = [p.strip() for p in line.partition("=")]
-                settings[key.lower()] = val
+                key = key.lower()
+                settings[key] = _strip_inline_comment(key, val)
     except OSError:
         pass
     return settings
@@ -1408,6 +1473,22 @@ class CallbookApp:
                  mqtt_settings=None, config_dir="", lan_share_bcast="",
                  update_check=True, update_auto=True):
         self.root = root
+        # Error log next to the .cfg (off with log=no). Errors in Tk callbacks
+        # and worker threads land there too instead of disappearing.
+        _cfg = mqtt_settings or {}
+        if _cfg.get("log", "yes").strip().lower() not in ("no", "false", "0", "off"):
+            _dir = config_dir or (os.path.dirname(win_file) if win_file else "")
+            if _dir:
+                set_log(
+                    os.path.join(_dir, self.APP_TITLE + ".log"),
+                    (qrz_password, _cfg.get("mqtt_password", "")),
+                )
+        root.report_callback_exception = (
+            lambda etype, exc, tb: log_error("tk callback", exc)
+        )
+        threading.excepthook = lambda a: log_error(
+            "thread " + getattr(a.thread, "name", "?"), a.exc_value
+        )
         self.port = port
         self.vhfctest_port = vhfctest_port
         self.lan_share_port = lan_share_port
@@ -1548,6 +1629,7 @@ class CallbookApp:
             try:
                 found = updater.check(self.VERSION, state_dir)
             except Exception:
+                log_error("update check")
                 found = None
             if found and found != self._update:
                 self._update_inbox.append(found)
@@ -1594,6 +1676,7 @@ class CallbookApp:
                 st = updater.status(state_dir)
                 self._update_status = st
             except Exception:
+                log_error("manual update check")
                 found, st = None, None
             if st is None or st[2]:
                 self._say("update check failed - no network?")
@@ -1628,6 +1711,7 @@ class CallbookApp:
                 stderr=subprocess.DEVNULL, creationflags=flags,
             )
         except Exception:
+            log_error("restart to install")
             self._say("could not restart - close and reopen Callbooker", 15)
             return
         self.on_close()
@@ -2228,6 +2312,7 @@ class CallbookApp:
             try:
                 res = fn(call)
             except Exception:
+                log_error("lookup " + source_label(fn))
                 res = None
             self._inbox.append((call, generation, i, res))
 
@@ -2266,7 +2351,7 @@ class CallbookApp:
             self.mqtt.publish(payload)
         except Exception:
             # MQTT must never interfere with the contest lookup UI.
-            pass
+            log_error("mqtt publish")
 
     def _start_precheck(self):
         # One-off start-up probe: query every source once for the self-test
@@ -2284,6 +2369,7 @@ class CallbookApp:
             try:
                 res = fn(self._selftest_call)
             except Exception:
+                log_error("self-test " + source_label(fn))
                 res = None
             ms = (time.perf_counter() - t0) * 1000.0
             if res is None:
@@ -2361,11 +2447,11 @@ class CallbookApp:
             try:
                 self._handle_call(latest)
             except Exception:
-                pass
+                log_error("vhfctest4win call")
         try:
             self._drain_lan_inbox()  # merge cache entries shared by LAN peers
         except Exception:
-            pass
+            log_error("lan inbox")
         # GitHub-release update check: pick up the result and keep the
         # title-bar suffix + the idle footer line in step with the download
         # state (a worker thread flips _update_state).
@@ -2380,20 +2466,24 @@ class CallbookApp:
         try:
             self._countdown_tick()
         except Exception:
-            pass
+            log_error("countdown")
         _btn = ("Restart to install" if self._update_state == "ready"
                 else "Downloading ..." if self._update_state == "getting"
                 else "Check update")
         if self.update_btn.cget("text") != _btn:
             self.update_btn.configure(text=_btn)
         _msg_on = False
-        if self._manual_msg and not self.current and not self._precheck_active:
+        if self._manual_msg and not self._precheck_active:
+            # Shown whether or not a call is on screen (in a contest one
+            # nearly always is); the call's own footer line comes back after.
             if time.time() < self._manual_until:
                 _msg_on = True
                 if self.call_label.cget("text") != self._manual_msg:
                     self.call_label.configure(text=self._manual_msg)
             else:
                 self._manual_msg = ""
+                if self.current and not self._mqtt_error_seen:
+                    self.call_label.configure(text=self._footer_text())
         _title_key = (bool(self._update), self._update_state)
         if _title_key != getattr(self, "_title_key", None):
             self._title_key = _title_key
@@ -2467,7 +2557,7 @@ class CallbookApp:
                     self._set_resolved_from("online")
                 self._render_slots(call, self._slots, self._pending_inds)
         except Exception:
-            pass
+            log_error("lookup results")
         self.cache.flush()  # debounced - actually writes at most once a minute
         if not self.stop.is_set():
             self.root.after(100, self._poll_inbox)

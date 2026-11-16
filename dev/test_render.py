@@ -433,6 +433,38 @@ def main():
     cd._countdown_tick()
     ok &= check("countdown tick: released to idle", cd._cd_word, None)
 
+    # --- config: inline comments, and the error log
+    with tempfile.TemporaryDirectory() as td:
+        cfgp = os.path.join(td, "t.cfg")
+        with open(cfgp, "w", encoding="utf-8") as fh:
+            fh.write("[settings]\ncache_persist=no   # in-memory only\n"
+                     "udp_port = 12061\t# other port\n"
+                     "qrz_password=ab #cd\ncontest_start=2026-11-14 17:30\n"
+                     "selftest_call=S5#0X\n")
+        cfg = cb.load_config(cfgp)
+        ok &= check("cfg: inline comment stripped", cfg.get("cache_persist"), "no")
+        ok &= check("cfg: tab + comment stripped", cfg.get("udp_port"), "12061")
+        ok &= check("cfg: password kept verbatim", cfg.get("qrz_password"), "ab #cd")
+        ok &= check("cfg: value with spaces kept", cfg.get("contest_start"),
+                    "2026-11-14 17:30")
+        ok &= check("cfg: '#' without a space is not a comment",
+                    cfg.get("selftest_call"), "S5#0X")
+        logp = os.path.join(td, "t.log")
+        cb.set_log(logp, ("hunter22",))
+        for _ in range(3):
+            try:
+                raise ValueError("boom hunter22")
+            except ValueError:
+                cb.log_error("unit test")
+        text = open(logp, encoding="utf-8").read()
+        ok &= check("log: written once (throttled)", text.count("ValueError: boom"), 1)
+        ok &= check("log: secret blanked", "hunter22" in text, False)
+        ok &= check("log: where tag present", "[unit test]" in text, True)
+        cb.set_log("")
+        cb.log_error("off")  # must not raise or write
+        ok &= check("log: off writes nothing",
+                    open(logp, encoding="utf-8").read() == text, True)
+
     print("\nALL PASS" if ok else "\nSOME FAILED")
     sys.exit(0 if ok else 1)
 

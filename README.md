@@ -1,6 +1,6 @@
 # Callbooker – contest callbook for HF and VHF
 
-> **Version:** 1.22 · Made by **S55OO** with AI assistance.
+> **Version:** 1.23 · Made by **S55OO** with AI assistance.
 > · **Public domain** – see [LICENSE](LICENSE).
 
 A compact always-on-top window that listens to your logger's UDP broadcast
@@ -253,6 +253,10 @@ update_auto=yes
 # last 3 seconds before this local date + time (right-click menu does the
 # same and wins over this line; empty = off):
 # contest_start=2026-11-14 17:30
+
+# Error log: unexpected errors go to Callbooker.log next to this file
+# (only created when something goes wrong). no = off:
+# log=yes
 
 # QRZ.com login - the QRZ column uses the paid XML API when this is set
 # and the subscription is live, otherwise the public page (locator only):
@@ -515,6 +519,7 @@ docs/Callbooker_quick_reference.pdf – one-page quick reference (colours, menu,
 .github/workflows/build-exe.yml – release build of the exe (GitHub Actions)
 manifest.xml            – PyInstaller manifest (common controls)
 Callbooker_cache.json   – local lookup cache          (auto-created, gitignored)
+Callbooker.log          – error log, only created when something goes wrong (gitignored)
 Callbooker_window.json  – last window position, view, output-field choice and
                           menu-set contest start (auto-created, gitignored)
 qrz_session.json        – cached QRZ XML session key   (auto-created, gitignored)
@@ -536,8 +541,21 @@ dev/*.py, dev/*.md      – logger-feed / VHFCtest4WIN notes and sniff tools
 
 Callbooker replaces the earlier separate apps (`n1mm_callbook` for HF,
 `VHFcallbook` for VHF, and before that `n1mm_VHFcallbook` /
-`VHFctest4WinCallbook`). All of their features are in `Callbooker` 1.22.
+`VHFctest4WinCallbook`). All of their features are in `Callbooker` 1.23.
 
+- **1.23** – **fixes and an error log.**
+  - *Check update* now shows its answer ("checking ...", "up to date",
+    "check failed") in the footer even while a callsign is on screen; the
+    call's own line comes back after a few seconds.
+  - A trailing `  # comment` after a value in `Callbooker.cfg` is ignored
+    (before, `cache_persist=no   # ...` was silently read as *yes*).
+    Password lines are taken verbatim.
+  - New **`Callbooker.log`** next to the .cfg: unexpected errors are written
+    there instead of vanishing (created only when something goes wrong, the
+    same error at most once a minute, passwords blanked, `log=no` to turn
+    it off). Attach it when reporting a problem.
+  - The release build now runs the test suite first and refuses to build if
+    a test fails. Dead code and stale notes removed.
 - **1.22** – hovering the `?` shows a small comment: *S55OO software*, the
   version and what a click does.
 - **1.21** – **new look.** Dark, flat window with a single blue accent: a

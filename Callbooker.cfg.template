@@ -93,3 +93,8 @@ update_auto=yes
 # until a second after the start). Also settable from the right-click menu
 # (that choice is remembered and wins over this line). Empty = off.
 # contest_start=2026-11-14 17:30
+
+# Error log. Unexpected errors are written to Callbooker.log next to this
+# file (created only when something goes wrong; passwords are blanked).
+# Send it along when you report a problem. log=no turns it off.
+# log=yes

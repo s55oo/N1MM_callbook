@@ -20,3 +20,7 @@ build/
 
 # packet captures (dev reference only, kept locally)
 *.pcapng
+
+# error log (next to the cfg)
+*.log
+*.log.old

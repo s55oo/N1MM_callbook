@@ -56,7 +56,7 @@ without it. PyInstaller is only needed to build the EXE. Public domain
 | `_HttpPool` / `http_get()` | one kept-alive HTTPS connection per host, gzip, per-host lock, stale-connection retry, busy-host fallback to a one-shot connection. **All source fetches go through `http_get`.** |
 | `Cache` | JSON cache keyed by the **bare call** (so LAN peers share entries regardless of view). `put()` only marks dirty; `flush()` (driven from `_poll_inbox`, forced in `on_close`) writes at most once per `FLUSH_INTERVAL`. Stores only `_CACHE_FIELDS`. Freshness window = `cache_days`, **default and hard max `MAX_CACHE_DAYS` (3)** — `run()` clamps a higher `cache_days` down; `get()` / `_load()` / `items_since()` drop older entries. Prunes expired / wrong-`CACHE_SCHEMA` entries on load. `persist=False` (`cache_persist=no`) = in-memory only. `_cached_sources(call)` on the app rejects an entry whose source count ≠ the active lookup chain (HF↔VHF changes whether QRZ has a slot) so it isn't mislabelled. |
 | `mqtt_client.MqttPublisher` / `lookup_payload()` | **optional** MQTT output (`mqtt_client.py`, needs `paho-mqtt`). Long-lived reconnecting Paho client with its own network thread, bounded offline queue, optional auth/TLS. `_publish_lookup_result` builds a schema-v1 JSON doc (Tk-free `lookup_payload`) after every completed lookup — a cache hit in `_on_stable`, a LAN-answered hit in `_drain_lan_inbox`, the final live source in `_poll_inbox` — and hands it to `MqttPublisher.publish` (returns fast; never blocks the UI). Off unless `mqtt_enabled=yes`. Errors surface in the footer. |
-| `updater` (`updater.py`, stdlib) | GitHub-release update check, **on** unless `update_check=no`. `_run_update_check` thread → `updater.check(VERSION, state_dir)` (once/day, cached in `update_check.json`) → `_update_inbox` → `_poll_inbox` sets `self._update` and refreshes the title suffix. With `update_auto` (default yes) `_poll_inbox` starts the download itself (`_start_update_download`); with `update_auto=no`, `_open_help` on the `?` icon runs `_act_on_update` when `self._update` is set. Frozen → `updater.download(url, <exe>.new, sha256)` — the digest GitHub reports for the asset (`_fetch_latest` → `update_check.json` → `cached_digest`) is verified, a mismatch is a failed download (a worker thread flips `_update_state`); source / no asset / failure → open the releases page. `updater.apply_pending(__version__)` runs first thing in `Callbooker.main()`: if `<exe>.new` exists it renames the running exe to `Callbooker_<its version>.exe` (`backup_name`; `_2`, `_3` … if taken, never overwritten — kept as a fallback), moves the new one in and relaunches (a running `.exe` can be renamed, not overwritten). |
+| `updater` (`updater.py`, stdlib) | GitHub-release update check, **on** unless `update_check=no`. `_run_update_check` thread → `updater.check(VERSION, state_dir)` (every 6 h - `CHECK_INTERVAL` - and again while the window stays open; cached in `update_check.json`) → `_update_inbox` → `_poll_inbox` sets `self._update` and refreshes the title suffix. With `update_auto` (default yes) `_poll_inbox` starts the download itself (`_start_update_download`); with `update_auto=no`, `_open_help` on the `?` icon runs `_act_on_update` when `self._update` is set. Frozen → `updater.download(url, <exe>.new, sha256)` — the digest GitHub reports for the asset (`_fetch_latest` → `update_check.json` → `cached_digest`) is verified, a mismatch is a failed download (a worker thread flips `_update_state`); source / no asset / failure → open the releases page. `updater.apply_pending(__version__)` runs first thing in `Callbooker.main()`: if `<exe>.new` exists it renames the running exe to `Callbooker_<its version>.exe` (`backup_name`; `_2`, `_3` … if taken, never overwritten — kept as a fallback), moves the new one in and relaunches (a running `.exe` can be renamed, not overwritten). |
 | `qrzcq_lookup` / `hamqth_lookup` / `qrz_lookup` | the sources. Each returns a dict with the same keys (`name qth grid class state cqzone country`) or `None`. **`qrz_lookup` is one source**: `_qrz_xml_lookup` (paid XML API, needs creds + a live subscription) when it can, else `_qrz_web_lookup` (grid from `cs_lat`/`cs_lon` on the public `/db/` page, no login) — never both. It sets module `_QRZ_TIER` (`"xml"`/`"web"`) and `_QRZ_SUBEXP`, read by the self-test. |
 | `qrz_session_load()` / `_qrz_session_save()` | persist the QRZ XML session key to `qrz_session.json` so a restart skips the ~0.6 s re-login |
 | `load_config()` / `run()` | entry point — parse args + the `key=value` .cfg, build `CallbookerApp`, run the Tk loop. `run(..., always_vhfctest=<bool>)` — Callbooker computes it from `vhfctest_share` (default yes) and forces the 6767 listener on when true |
@@ -114,6 +114,19 @@ walks `FONT_LADDER` (26 … 12) and returns the first size whose
 `tkfont.Font.measure(text)` fits the canvas width (live width once mapped,
 `winfo_reqwidth` before) — `Font`s cached in `self._font_cache`; canvas is
 `width=360` to give `FONT_SIZE_BIG` room.
+
+### Error log
+
+`log_error(where)` appends the current traceback to `Callbooker.log` next to
+the .cfg (`set_log` in `__init__`; `log=no` turns it off; created only on the
+first error, same error at most once a minute, rotated to `.old` at 256 KB,
+QRZ/MQTT passwords blanked). Every "must never die" `except Exception` in the
+loops calls it, and so do `root.report_callback_exception` and
+`threading.excepthook`. **A new swallowed `except` should call `log_error`,
+not `pass`.**
+
+`load_config` strips a trailing `  # comment` from values (not on `*password`
+keys).
 
 ### Look
 
@@ -230,7 +243,8 @@ unchanged.
 ## Files the app writes (all gitignored, all safe to delete)
 
 `Callbooker_cache.json`, `Callbooker_window.json` (last position, `"mode"`,
-`"show"` = output-field choice, `"contest_start"` = menu-set start), `qrz_session.json`. Next to the `.cfg` / exe.
+`"show"` = output-field choice, `"contest_start"` = menu-set start), `qrz_session.json`,
+`Callbooker.log` (errors only, see *Error log*). Next to the `.cfg` / exe.
 
 **Never commit `Callbooker.cfg`** (nor the older `callbook.cfg` /
 `VHFcallbook.cfg` / …, still gitignored) — it holds the QRZ login in
@@ -320,7 +334,7 @@ docs / `dev/` / comment change is committed and pushed only.
 - `dev/test_mqtt.py` — MQTT config parsing, schema-v1 `lookup_payload`,
   and the publish integration points (fake Paho client + fake cache, no
   broker). Has a Tk-less engine-import shim for CI.
-- `dev/test_updater.py` — `updater.py`: version compare, the daily-check
+- `dev/test_updater.py` — `updater.py`: version compare, the check
   throttle, `download()` (fake `urlopen`), and the exe-swap file dance.
 - `dev/lan_wire.py` — real-UDP two-socket LAN-sharing smoke test (one PC).
 - `dev/lan_probe.py` — real-UDP **two-PC** diagnostic: `listen` on one,

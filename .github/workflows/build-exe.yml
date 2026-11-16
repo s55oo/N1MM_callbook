@@ -43,6 +43,18 @@ jobs:
 
       # PyInstaller's runtime deps first, then PyInstaller itself from the
       # sdist: pip compiles the bootloader with the runner's MSVC.
+      # Nothing is built (or released) from code whose tests fail.
+      - name: Tests
+        run: |
+          python dev/test_updater.py
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          python dev/test_mqtt.py
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          python dev/test_lan_share.py
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          python dev/test_render.py
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+
       - name: Install PyInstaller (bootloader compiled from source)
         run: |
           python -m pip install altgraph packaging pefile pyinstaller-hooks-contrib pywin32-ctypes setuptools

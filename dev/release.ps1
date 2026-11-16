@@ -10,7 +10,7 @@
 param(
     [string]$Version = "1.12",
     [string]$Repo    = "s55oo/N1MM_callbook",
-    [string]$RunId   = "41925834753",   # Actions run that built Callbooker.exe
+    [string]$RunId   = "",              # Actions run to take the exe from; empty = latest successful build
     [switch]$Download                   # force re-download of the exe from the run
 )
 
@@ -30,6 +30,11 @@ cmd /c "git pull --ff-only 2>&1"; Check "git pull"
 
 # 1. the exe
 if ($Download -or -not (Test-Path "Callbooker.exe")) {
+    if (-not $RunId) {
+        $RunId = gh run list -R $Repo --workflow build-exe.yml --status success --limit 1 --json databaseId --jq ".[0].databaseId"
+        Check "finding the latest successful build"
+        if (-not $RunId) { Fail "no successful build-exe.yml run found" }
+    }
     Write-Host "== downloading Callbooker.exe from run $RunId"
     if (Test-Path "Callbooker.exe") { Remove-Item "Callbooker.exe" -Force }
     gh run download $RunId -R $Repo -n Callbooker.exe -D .; Check "gh run download"

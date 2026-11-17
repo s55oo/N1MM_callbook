@@ -61,6 +61,13 @@ update_auto=yes
 # qrz_username=S55OO
 # qrz_password=YOUR_QRZ_PASSWORD
 
+# HamQTH.com login (free account - register at https://www.hamqth.com).
+# With it, the HamQTH column uses HamQTH's official XML service instead of
+# reading its web page, which is faster and does not break when the page
+# layout changes. Without it, the web page is used as before.
+# hamqth_username=S55OO
+# hamqth_password=YOUR_HAMQTH_PASSWORD
+
 # Optional MQTT output. One JSON message is published after every completed
 # lookup, including cache hits. MQTT is disabled unless explicitly enabled.
 # Install paho-mqtt when running from source (`pip install -r requirements.txt`);

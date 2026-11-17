@@ -56,6 +56,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit 1 }
           python dev/test_qrz.py
           if ($LASTEXITCODE -ne 0) { exit 1 }
+          python dev/test_hamqth.py
+          if ($LASTEXITCODE -ne 0) { exit 1 }
 
       - name: Install PyInstaller (bootloader compiled from source)
         run: |

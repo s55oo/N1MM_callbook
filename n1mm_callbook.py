@@ -16,7 +16,7 @@ the paid XML service when credentials are configured, else its public
 Made by S55OO with AI assistance.
 """
 
-__version__ = "1.27"
+__version__ = "1.28"
 
 import argparse
 import functools
@@ -40,7 +40,7 @@ import xml.etree.ElementTree as ET
 import updater
 from mqtt_client import MqttPublisher, lookup_payload
 
-USER_AGENT = "Mozilla/5.0 Callbooker/1.27"
+USER_AGENT = "Mozilla/5.0 Callbooker/1.28"
 HAMQTH_UA = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
     "(KHTML, like Gecko) Chrome/126.0 Safari/537.36"
@@ -918,7 +918,108 @@ def qrzcq_lookup(call, timeout=15):
     }
 
 
+# HamQTH XML API (https://www.hamqth.com/developers.php): free HamQTH account,
+# xml.php?u=&p= -> <session_id> (valid 1 hour), then
+# xml.php?id=<session>&callsign=<call>&prg=<program>. Login from the .cfg
+# (hamqth_username / hamqth_password) via set_hamqth_login().
+HAMQTH_XML = "https://www.hamqth.com/xml.php"
+HAMQTH_PRG = "Callbooker"
+HAMQTH_SESSION_TTL = 50 * 60     # renew a little before HamQTH's 60 min
+_HAMQTH_LOGIN = ("", "")
+_HAMQTH_SESSION = {}             # {"id": str, "ts": float}
+_HAMQTH_SESSION_LOCK = threading.Lock()
+_HAMQTH_TIER = ""                # "xml" / "web" - the path last used
+
+
+def set_hamqth_login(username, password):
+    global _HAMQTH_LOGIN
+    _HAMQTH_LOGIN = ((username or "").strip(), password or "")
+    _HAMQTH_SESSION.clear()
+
+
+def _hamqth_xml(raw):
+    # Parse a HamQTH XML reply with its default namespace removed.
+    raw = re.sub(r'\sxmlns="[^"]*"', "", raw, count=1)
+    try:
+        return ET.fromstring(raw)
+    except ET.ParseError:
+        return None
+
+
+def _hamqth_login(username, password, timeout=15):
+    """(session_id, "") or (None, error text)."""
+    url = HAMQTH_XML + "?" + urllib.parse.urlencode({"u": username, "p": password})
+    raw = http_get(url, {"User-Agent": USER_AGENT}, timeout)
+    if raw is None:
+        return None, "network error"
+    root = _hamqth_xml(raw)
+    if root is None:
+        return None, "parse error"
+    err = (root.findtext("session/error") or "").strip()
+    if err:
+        return None, err
+    sid = (root.findtext("session/session_id") or "").strip()
+    return (sid or None), ("" if sid else "no session id")
+
+
+def _hamqth_xml_lookup(call, username, password, timeout=15):
+    """HamQTH via its XML API. Dict like qrzcq_lookup, {} = no record,
+    None = login / network failure (the caller then tries the web page)."""
+    with _HAMQTH_SESSION_LOCK:
+        sid = _HAMQTH_SESSION.get("id")
+        if not sid or time.time() - _HAMQTH_SESSION.get("ts", 0) > HAMQTH_SESSION_TTL:
+            sid, err = _hamqth_login(username, password, timeout)
+            if not sid:
+                _HAMQTH_SESSION.clear()
+                return None
+            _HAMQTH_SESSION.update(id=sid, ts=time.time())
+    url = HAMQTH_XML + "?" + urllib.parse.urlencode(
+        {"id": sid, "callsign": call.upper(), "prg": HAMQTH_PRG})
+    raw = http_get(url, {"User-Agent": USER_AGENT}, timeout)
+    if raw is None:
+        return None
+    root = _hamqth_xml(raw)
+    if root is None:
+        return None
+    err = (root.findtext("session/error") or "").strip()
+    if err:
+        if "session" in err.lower():
+            _HAMQTH_SESSION.clear()      # expired - log in again next time
+            return None
+        return {}                        # e.g. "Callsign not found"
+    s = root.find("search")
+    if s is None:
+        return {}
+    t = lambda tag: (s.findtext(tag) or "").strip()
+    return {
+        "name": t("nick") or t("adr_name"),
+        "qth": t("qth") or t("adr_city"),
+        "grid": normalize_grid(t("grid")),
+        "class": "",
+        "state": t("us_state"),
+        "cqzone": t("cq"),
+        "country": t("country"),
+    }
+
+
 def hamqth_lookup(call, timeout=15):
+    """HamQTH.com - **one** source: the XML API when a HamQTH login is
+    configured (free account), else the public web page. Sets
+    ``_HAMQTH_TIER``."""
+    global _HAMQTH_TIER
+    user, pw = _HAMQTH_LOGIN
+    if user and pw:
+        info = _hamqth_xml_lookup(call, user, pw, timeout)
+        if info is not None:
+            _HAMQTH_TIER = "xml"
+            return info
+    info = _hamqth_web_lookup(call, timeout)
+    if info is not None:
+        _HAMQTH_TIER = "web"
+    return info
+
+
+def _hamqth_web_lookup(call, timeout=15):
     """Query HamQTH.com public page for a callsign.
 
     HamQTH mirrors the same fields as QRZCQ (name, QTH, grid locator,
@@ -1277,13 +1378,15 @@ def classify_result(res):
 _STATUS_WORD = {"ok": "OK", "empty": "no data", "fail": "FAIL"}
 
 
-def selftest_line(call, labels, results, qrz_tier=""):
+def selftest_line(call, labels, results, qrz_tier="", hamqth_tier=""):
     """'self-test S55OO: QRZ·xml OK 412ms | QRZCQ OK 301ms | HamQTH no data 220ms'
     from labels + (status, ms) pairs."""
     parts = []
     for lbl, (status, ms) in zip(labels, results):
         if lbl == "QRZ" and qrz_tier:
             lbl = "QRZ·" + qrz_tier
+        elif lbl == "HamQTH" and hamqth_tier:
+            lbl = "HamQTH·" + hamqth_tier
         parts.append("{} {} {:.0f}ms".format(lbl, status, ms))
     return "self-test {}: {}".format(call, " | ".join(parts))
 
@@ -1535,9 +1638,12 @@ class CallbookApp:
             if _dir:
                 set_log(
                     os.path.join(_dir, self.APP_TITLE + ".log"),
-                    (qrz_password, _cfg.get("mqtt_password", "")),
+                    (qrz_password, _cfg.get("mqtt_password", ""),
+                     _cfg.get("hamqth_password", "")),
                 )
                 set_sources_log(os.path.join(_dir, self.APP_TITLE + "_sources.log"))
+        set_hamqth_login(_cfg.get("hamqth_username", ""),
+                         _cfg.get("hamqth_password", ""))
         self._src_stats = {}        # label -> {"ok": n, "empty": n, "fail": n}
         self._src_stats_written = time.time()
         root.report_callback_exception = (
@@ -2467,6 +2573,8 @@ class CallbookApp:
         for lbl, v in zip(self.source_labels, self._precheck):
             if lbl == "QRZ" and self._qrz_tier:
                 lbl = "QRZ·" + self._qrz_tier  # "QRZ·xml" / "QRZ·web"
+            elif lbl == "HamQTH" and _HAMQTH_TIER == "xml":
+                lbl = "HamQ·xml"
             if v is None:
                 lines.append("{:<7} {}".format(lbl, SLOT_PENDING))
             else:
@@ -2496,7 +2604,7 @@ class CallbookApp:
         self._precheck = None
         if all(results):
             log_sources(selftest_line(self._selftest_call, labels, results,
-                                      self._qrz_tier))
+                                      self._qrz_tier, _HAMQTH_TIER))
         # Name the sources that did not answer properly.
         bad = ["{} {}".format(lbl, v[0]) for lbl, v in zip(labels, results)
                if v and v[0] != "OK"]
@@ -2859,7 +2967,7 @@ class CallbookApp:
             for t in ts:
                 t.join(30)
             res = [v or ("FAIL", 30000.0) for v in out]
-            log_sources(selftest_line(call, labels, res, _QRZ_TIER))
+            log_sources(selftest_line(call, labels, res, _QRZ_TIER, _HAMQTH_TIER))
             self._say("  ".join("{} {}".format(
                 ("QRZ·" + _QRZ_TIER) if (l == "QRZ" and _QRZ_TIER) else l, v[0])
                 for l, v in zip(labels, res)), 20)

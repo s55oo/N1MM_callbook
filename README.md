@@ -1,6 +1,6 @@
 # Callbooker – contest callbook for HF and VHF
 
-> **Version:** 1.27 · Made by **S55OO** with AI assistance.
+> **Version:** 1.28 · Made by **S55OO** with AI assistance.
 > · **Public domain** – see [LICENSE](LICENSE).
 
 A compact always-on-top window that listens to your logger's UDP broadcast
@@ -257,6 +257,10 @@ update_auto=yes
 # Error log: unexpected errors go to Callbooker.log next to this file
 # (only created when something goes wrong). no = off:
 # log=yes
+
+# HamQTH login (free account) - HamQTH column via its XML API:
+# hamqth_username=S55OO
+# hamqth_password=...
 
 # QRZ.com login - the QRZ column uses the paid XML API when this is set
 # and the subscription is live, otherwise the public page (locator only):
@@ -546,6 +550,13 @@ Callbooker replaces the earlier separate apps (`n1mm_callbook` for HF,
 `VHFcallbook` for VHF, and before that `n1mm_VHFcallbook` /
 `VHFctest4WinCallbook`). All of their features are in `Callbooker` 1.25.
 
+- **1.28** – **HamQTH via its official XML service.** With a (free) HamQTH
+  account in `Callbooker.cfg` (`hamqth_username=` / `hamqth_password=`) the
+  HamQTH column uses HamQTH's XML API - log in once, a session for an hour,
+  then one XML lookup per call - instead of reading the web page, which was
+  coming back empty ("HamQTH no data"). Without a login the web page is
+  still used. The self-test line shows `HamQ·xml` when the API is in use.
+  Same flow as [kevinhooke/HamQTHClient](https://github.com/kevinhooke/HamQTHClient).
 - **1.27** – **see which source is not answering.**
   - The start-up footer now names any source that did not pass, e.g.
     `self-test: 2/3 sources OK (HamQTH no data)`.

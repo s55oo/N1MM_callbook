@@ -125,6 +125,15 @@ loops calls it, and so do `root.report_callback_exception` and
 `threading.excepthook`. **A new swallowed `except` should call `log_error`,
 not `pass`.**
 
+**Source-health log** (`Callbooker_sources.log`, same folder, via
+`set_sources_log` / `log_sources`): `_finish_precheck` writes the start-up
+self-test as one `selftest_line`; right-click **Test sources now**
+(`_test_sources_now`, worker thread, answer via `_say`) writes the same;
+`_poll_inbox` tallies every live slot result with `classify_result`
+(ok / empty / fail) in `self._src_stats`, written by `_write_source_stats`
+every `SOURCE_STATS_EVERY` (15 min) and on close. The footer summary names
+the non-OK sources.
+
 `load_config` strips a trailing `  # comment` from values (not on `*password`
 keys).
 
@@ -244,7 +253,7 @@ unchanged.
 
 `Callbooker_cache.json`, `Callbooker_window.json` (last position, `"mode"`,
 `"show"` = output-field choice, `"contest_start"` = menu-set start), `qrz_session.json`,
-`Callbooker.log` (errors only, see *Error log*). Next to the `.cfg` / exe.
+`Callbooker.log` (errors only, see *Error log*), `Callbooker_sources.log` (source health). Next to the `.cfg` / exe.
 
 **Never commit `Callbooker.cfg`** (nor the older `callbook.cfg` /
 `VHFcallbook.cfg` / …, still gitignored) — it holds the QRZ login in

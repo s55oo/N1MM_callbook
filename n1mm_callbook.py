@@ -16,7 +16,7 @@ the paid XML service when credentials are configured, else its public
 Made by S55OO with AI assistance.
 """
 
-__version__ = "1.26"
+__version__ = "1.27"
 
 import argparse
 import functools
@@ -40,7 +40,7 @@ import xml.etree.ElementTree as ET
 import updater
 from mqtt_client import MqttPublisher, lookup_payload
 
-USER_AGENT = "Mozilla/5.0 Callbooker/1.26"
+USER_AGENT = "Mozilla/5.0 Callbooker/1.27"
 HAMQTH_UA = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
     "(KHTML, like Gecko) Chrome/126.0 Safari/537.36"
@@ -1236,6 +1236,58 @@ def log_error(where, exc=None):
         pass
 
 
+# Source-health log: Callbooker_sources.log next to the .cfg. One line per
+# self-test (start-up or the right-click "Test sources now") and a per-source
+# tally of live lookups every SOURCE_STATS_EVERY seconds and on close.
+SOURCES_LOG_MAX_BYTES = 128 * 1024
+SOURCE_STATS_EVERY = 15 * 60
+_sources_log_path = ""
+
+
+def set_sources_log(path):
+    global _sources_log_path
+    _sources_log_path = path or ""
+
+
+def log_sources(text):
+    """Append one timestamped line to the source-health log. Never raises."""
+    try:
+        if not _sources_log_path:
+            return
+        try:
+            if os.path.getsize(_sources_log_path) > SOURCES_LOG_MAX_BYTES:
+                os.replace(_sources_log_path, _sources_log_path + ".old")
+        except OSError:
+            pass
+        with _log_lock, open(_sources_log_path, "a", encoding="utf-8") as fh:
+            fh.write("{} v{}  {}\n".format(
+                time.strftime("%Y-%m-%d %H:%M:%S"), __version__, text))
+    except Exception:
+        pass
+
+
+def classify_result(res):
+    """'ok' (real fields), 'empty' (answered, nothing in it) or 'fail'
+    (None = network / HTTP error). Same rule as the self-test."""
+    if res is None:
+        return "fail"
+    return "ok" if any(res.values()) else "empty"
+
+
+_STATUS_WORD = {"ok": "OK", "empty": "no data", "fail": "FAIL"}
+
+
+def selftest_line(call, labels, results, qrz_tier=""):
+    """'self-test S55OO: QRZ·xml OK 412ms | QRZCQ OK 301ms | HamQTH no data 220ms'
+    from labels + (status, ms) pairs."""
+    parts = []
+    for lbl, (status, ms) in zip(labels, results):
+        if lbl == "QRZ" and qrz_tier:
+            lbl = "QRZ·" + qrz_tier
+        parts.append("{} {} {:.0f}ms".format(lbl, status, ms))
+    return "self-test {}: {}".format(call, " | ".join(parts))
+
+
 def _strip_inline_comment(key, val):
     # "yes   # explanation" -> "yes". A '#' only starts a comment after
     # whitespace, and password values are left alone (a password may
@@ -1449,6 +1501,8 @@ class CallbookApp:
     _show = None  # operator field choice; set per instance in __init__
     _cd_word = None          # countdown word on screen, see _countdown_tick
     _cs_override = False     # contest start came from the menu, not the cfg
+    _src_stats = None        # per-source live tally, see _write_source_stats
+    _src_stats_written = float("inf")  # bare test instances never write
     # Append " (Country)" to that name for a non-US (DX) call. Callbooker
     # turns this off in both views - the CQ zone is the multiplier.
     DX_COUNTRY = True
@@ -1483,6 +1537,9 @@ class CallbookApp:
                     os.path.join(_dir, self.APP_TITLE + ".log"),
                     (qrz_password, _cfg.get("mqtt_password", "")),
                 )
+                set_sources_log(os.path.join(_dir, self.APP_TITLE + "_sources.log"))
+        self._src_stats = {}        # label -> {"ok": n, "empty": n, "fail": n}
+        self._src_stats_written = time.time()
         root.report_callback_exception = (
             lambda etype, exc, tb: log_error("tk callback", exc)
         )
@@ -1970,6 +2027,7 @@ class CallbookApp:
         menu.add_command(label="Clear contest start",
                          command=self._clear_contest_start)
         menu.add_separator()
+        menu.add_command(label="Test sources now", command=self._test_sources_now)
         menu.add_command(label="Check for update now", command=self._check_now)
         self._field_menu = menu
         self.root.bind("<Button-3>", self._popup_field_menu)
@@ -2432,15 +2490,24 @@ class CallbookApp:
             return
         self._precheck_active = False
         results = self._precheck or []
+        labels = list(self.source_labels)
         oks = sum(1 for v in results if v and v[0] == "OK")
         fails = sum(1 for v in results if v and v[0] == "FAIL")
         self._precheck = None
+        if all(results):
+            log_sources(selftest_line(self._selftest_call, labels, results,
+                                      self._qrz_tier))
+        # Name the sources that did not answer properly.
+        bad = ["{} {}".format(lbl, v[0]) for lbl, v in zip(labels, results)
+               if v and v[0] != "OK"]
         if self.current:
             return
         if fails:
             summary = "self-test: {} source(s) FAILED".format(fails)
         else:
             summary = "self-test: {}/{} sources OK".format(oks, len(results))
+        if bad:
+            summary += " ({})".format(", ".join(bad))
         if self._qrz_tier == "web":
             summary += "  ·  QRZ: web page (no XML sub)"
         elif self._qrz_tier == "xml" and _QRZ_SUBEXP:
@@ -2483,6 +2550,8 @@ class CallbookApp:
             self._countdown_tick()
         except Exception:
             log_error("countdown")
+        if time.time() - self._src_stats_written >= SOURCE_STATS_EVERY:
+            self._write_source_stats()
         _btn = ("Restart to install" if self._update_state == "ready"
                 else "Downloading ..." if self._update_state == "getting"
                 else "Check update")
@@ -2556,6 +2625,13 @@ class CallbookApp:
                     continue
                 self._slots[i] = res
                 self._pending_inds.discard(i)
+                labels = getattr(self, "source_labels", ())
+                if i < len(labels):
+                    if self._src_stats is None:
+                        self._src_stats = {}
+                    st = self._src_stats.setdefault(
+                        labels[i], {"ok": 0, "empty": 0, "fail": 0})
+                    st[classify_result(res)] += 1
                 if not self._pending_inds:
                     # Only cache a complete, error-free set of results.
                     if not any(s is None for s in self._slots):
@@ -2741,7 +2817,60 @@ class CallbookApp:
                 return ("Segoe UI", size, "bold")
         return ("Segoe UI", FONT_LADDER[-1], "bold")
 
+    def _write_source_stats(self, closing=False):
+        # Tally of live lookups per source since the last write, then reset.
+        self._src_stats_written = time.time()
+        if not self._src_stats:
+            return
+        parts = []
+        for lbl, st in sorted(self._src_stats.items()):
+            n = st["ok"] + st["empty"] + st["fail"]
+            parts.append("{} {}/{} ok, {} no data, {} fail".format(
+                lbl, st["ok"], n, st["empty"], st["fail"]))
+        log_sources("{} {}".format("lookups (session end):" if closing
+                                   else "lookups (last 15 min):", " | ".join(parts)))
+        self._src_stats = {}
+
+    def _test_sources_now(self):
+        # Right-click "Test sources now": the start-up self-test on demand,
+        # answered in the footer and written to Callbooker_sources.log.
+        call = self._selftest_call or "S55OO"
+        chain = list(self.lookup_chain)
+        labels = list(self.source_labels)
+        self._say("testing sources with {} ...".format(call), 20)
+
+        def work():
+            out = [None] * len(chain)
+
+            def one(i, fn):
+                t0 = time.perf_counter()
+                try:
+                    res = fn(call)
+                except Exception:
+                    log_error("source test " + source_label(fn))
+                    res = None
+                out[i] = (_STATUS_WORD[classify_result(res)],
+                          (time.perf_counter() - t0) * 1000.0)
+
+            ts = [threading.Thread(target=one, args=(i, fn), daemon=True)
+                  for i, fn in enumerate(chain)]
+            for t in ts:
+                t.start()
+            for t in ts:
+                t.join(30)
+            res = [v or ("FAIL", 30000.0) for v in out]
+            log_sources(selftest_line(call, labels, res, _QRZ_TIER))
+            self._say("  ".join("{} {}".format(
+                ("QRZ·" + _QRZ_TIER) if (l == "QRZ" and _QRZ_TIER) else l, v[0])
+                for l, v in zip(labels, res)), 20)
+
+        threading.Thread(target=work, daemon=True, name="source-test").start()
+
     def on_close(self):
+        try:
+            self._write_source_stats(closing=True)
+        except Exception:
+            log_error("source stats")
         self._save_window()
         self.cache.flush(force=True)
         if self.lan is not None:

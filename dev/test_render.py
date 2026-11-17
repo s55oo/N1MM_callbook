@@ -465,6 +465,28 @@ def main():
         ok &= check("log: off writes nothing",
                     open(logp, encoding="utf-8").read() == text, True)
 
+    # --- source-health log
+    ok &= check("classify: None is fail", cb.classify_result(None), "fail")
+    ok &= check("classify: empty dict is no data",
+                cb.classify_result({"name": "", "grid": ""}), "empty")
+    ok &= check("classify: a field is ok", cb.classify_result({"grid": "JN76"}), "ok")
+    ok &= check("selftest line",
+                cb.selftest_line("S55OO", ["QRZ", "QRZCQ", "HamQTH"],
+                                 [("OK", 412.3), ("OK", 300), ("no data", 219.6)], "xml"),
+                "self-test S55OO: QRZ·xml OK 412ms | QRZCQ OK 300ms | HamQTH no data 220ms")
+    with tempfile.TemporaryDirectory() as td:
+        sp = os.path.join(td, "s.log")
+        cb.set_sources_log(sp)
+        cb.log_sources("hello")
+        ok &= check("sources log written", open(sp, encoding="utf-8").read().rstrip().endswith("hello"), True)
+        st = make(cb.CallbookApp)
+        st._src_stats = {"HamQTH": {"ok": 8, "empty": 2, "fail": 1}}
+        st._write_source_stats(closing=True)
+        text = open(sp, encoding="utf-8").read()
+        ok &= check("stats line", "HamQTH 8/11 ok, 2 no data, 1 fail" in text, True)
+        ok &= check("stats reset", st._src_stats, {})
+        cb.set_sources_log("")
+
     print("\nALL PASS" if ok else "\nSOME FAILED")
     sys.exit(0 if ok else 1)
 

@@ -1,6 +1,6 @@
 # Callbooker – contest callbook for HF and VHF
 
-> **Version:** 1.26 · Made by **S55OO** with AI assistance.
+> **Version:** 1.27 · Made by **S55OO** with AI assistance.
 > · **Public domain** – see [LICENSE](LICENSE).
 
 A compact always-on-top window that listens to your logger's UDP broadcast
@@ -430,6 +430,8 @@ last `RadioInfo`; it is `null` for VHFCtest4WIN.
 - **Contest start countdown:** right-click → *Contest start...* (or
   `contest_start=` in the .cfg) – READY / STEADY / GO in the last 3 seconds
   before the start (local time, full date + time).
+- **Test sources now** (right-click): checks QRZ / QRZCQ / HamQTH right
+  away; see `Callbooker_sources.log` for the history.
 - **Check update** (title row, also in the right-click menu) asks GitHub
   right now – see *Update check* below.
 - The small **help icon** (top-right) opens the project page in your
@@ -519,6 +521,7 @@ docs/Callbooker_quick_reference.pdf – one-page quick reference (colours, menu,
 .github/workflows/build-exe.yml – release build of the exe (GitHub Actions)
 manifest.xml            – PyInstaller manifest (common controls)
 Callbooker_cache.json   – local lookup cache          (auto-created, gitignored)
+Callbooker_sources.log  – per-source self-test results and lookup tallies (gitignored)
 Callbooker.log          – error log, only created when something goes wrong (gitignored)
 Callbooker_window.json  – last window position, view, output-field choice and
                           menu-set contest start (auto-created, gitignored)
@@ -543,6 +546,16 @@ Callbooker replaces the earlier separate apps (`n1mm_callbook` for HF,
 `VHFcallbook` for VHF, and before that `n1mm_VHFcallbook` /
 `VHFctest4WinCallbook`). All of their features are in `Callbooker` 1.25.
 
+- **1.27** – **see which source is not answering.**
+  - The start-up footer now names any source that did not pass, e.g.
+    `self-test: 2/3 sources OK (HamQTH no data)`.
+  - New **`Callbooker_sources.log`** next to the .cfg: every self-test
+    (`self-test S55OO: QRZ·xml OK 412ms | QRZCQ OK 301ms | HamQTH no data
+    220ms`) and, every 15 minutes and on close, a tally of live lookups per
+    source (`HamQTH 288/300 ok, 9 no data, 3 fail`). *no data* = the site
+    answered but returned an empty record; *fail* = network / HTTP error.
+  - Right-click → **Test sources now** runs the self-test on demand; the
+    result shows in the footer and goes to the same log.
 - **1.26** – **QRZ XML lookups work again.** QRZ moved its XML service to
   `xmldata.qrz.com`; the old host only redirects (Callbooker does not follow
   redirects) and the reply uses a new XML namespace, so logins and lookups

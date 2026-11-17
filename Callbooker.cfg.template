@@ -23,8 +23,8 @@ cache_file=Callbooker_cache.json
 # Start-up self-test (probe every source once on launch): on by default.
 # selftest=no
 # Callsign the self-test (and right-click "Test sources now") looks up.
-# Pick one that is on all three sites - S55OO has no HamQTH record, so it
-# shows "HamQTH no data" even when HamQTH works.
+# Pick one that is on all three sites: a call a site has no record for
+# shows "no data" there even when that site works fine.
 selftest_call=S53ZO
 
 # Update check: on start-up (at most every 6 hours) Callbooker asks GitHub

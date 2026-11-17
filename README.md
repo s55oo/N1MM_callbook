@@ -240,7 +240,7 @@ cache_persist=yes                 # no = in-memory only, never writes to disk
 
 # Start-up self-test (query every source once on launch, show OK / time):
 # selftest=yes
-# selftest_call=S55OO             # call to probe; blank / selftest=no disables
+selftest_call=S53ZO               # call to probe (pick one on all three sites); blank / selftest=no disables
 
 # Update check (GitHub, every 6 hours, title-bar / footer nudge). On by
 # default; set to no to disable:
